@@ -1,0 +1,34 @@
+# Sanal ortam
+.venv/
+venv/
+env/
+
+# Python cache — asla commit edilmez
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Güvenlik — asla commit edilmez
+*.enc
+*.key
+*.lock
+manifest.json
+config.json
+*.log
+
+# Geçici dosyalar
+*.zip
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

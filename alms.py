@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""
+alms.py — ALMS İndirici Ana Giriş Noktası
+──────────────────────────────────────────
+Kullanım:
+  alms                   → interaktif menü
+  alms setup             → ilk kurulum sihirbazı
+  alms sync              → yeni dosyaları indir (sessiz)
+  alms sync --quiet      → cron/scheduler için
+  alms list              → dersleri listele
+  alms download          → interaktif indirme
+  alms status            → sistem durumu
+  alms logout            → kimlik bilgilerini sil
+  alms config            → ayarları göster
+  alms --help / -h       → yardım
+"""
+
+import argparse
+import atexit
+import logging
+import os
+import platform
+import sys
+from pathlib import Path
+
+# Proje kökünü sys.path'e ekle
+ROOT = Path(__file__).parent
+sys.path.insert(0, str(ROOT))
+
+from utils.paths import CONFIG_DIR, LOG_FILE, LOCK_FILE, ensure_secure_dir
+from utils.integrity import sanitize_log
+
+
+# ─── Lock dosyası (tek instance) ─────────────────────────────
+_lock_fd = None
+
+
+def _acquire_lock() -> bool:
+    """Döner: True = kilit alındı, False = başka instance çalışıyor."""
+    global _lock_fd
+    ensure_secure_dir(CONFIG_DIR)
+
+    if platform.system() == "Windows":
+        # Windows: dosya varlığı kontrolü (basit)
+        if LOCK_FILE.exists():
+            try:
+                pid = int(LOCK_FILE.read_text().strip())
+                import ctypes
+                h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+                if h:
+                    ctypes.windll.kernel32.CloseHandle(h)
+                    return False  # hâlâ çalışıyor
+            except Exception:
+                pass
+        LOCK_FILE.write_text(str(os.getpid()))
+        return True
+    else:
+        import fcntl
+        try:
+            _lock_fd = open(LOCK_FILE, "w")
+            fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_fd.write(str(os.getpid()))
+            _lock_fd.flush()
+            return True
+        except OSError:
+            return False
+
+
+def _release_lock():
+    global _lock_fd
+    if platform.system() != "Windows":
+        if _lock_fd:
+            try:
+                import fcntl
+                fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+                _lock_fd.close()
+            except Exception:
+                pass
+    if LOCK_FILE.exists():
+        try:
+            LOCK_FILE.unlink()
+        except Exception:
+            pass
+
+
+atexit.register(_release_lock)
+
+
+# ─── Logging ─────────────────────────────────────────────────
+class _SanitizingFilter(logging.Filter):
+    def filter(self, record):
+        record.msg = sanitize_log(str(record.msg))
+        return True
+
+
+def setup_logging(verbose: bool = False, quiet: bool = False):
+    ensure_secure_dir(CONFIG_DIR)
+    level = logging.DEBUG if verbose else (logging.WARNING if quiet else logging.INFO)
+
+    fmt = "%(asctime)s [%(levelname)s] %(message)s"
+    handlers = [
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+    ]
+    if not quiet:
+        handlers.append(logging.StreamHandler(sys.stdout))
+
+    logging.basicConfig(level=level, format=fmt, handlers=handlers)
+
+    # Token/şifre sızdırma önlemi
+    sanitizer = _SanitizingFilter()
+    for h in logging.root.handlers:
+        h.addFilter(sanitizer)
+
+    # Requests kütüphanesinin verbose loglarını kapat
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+
+
+# ─── CLI ─────────────────────────────────────────────────────
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="alms",
+        description="IGU ALMS — Ders Materyali İndirici",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    p.add_argument("command", nargs="?", default="menu",
+                   choices=["menu", "setup", "sync", "list",
+                            "download", "status", "logout", "config"],
+                   help="Çalıştırılacak komut (varsayılan: menu)")
+    p.add_argument("-v", "--verbose", action="store_true",
+                   help="Ayrıntılı loglar")
+    p.add_argument("-q", "--quiet", action="store_true",
+                   help="Sadece hata logları (cron için)")
+    p.add_argument("-f", "--format", choices=["pdf", "video"],
+                   help="sync/download için dosya tipi filtresi")
+    p.add_argument("--course", metavar="KOD",
+                   help="Ders kodu veya isim filtresi (örn. FIZ108)")
+    p.add_argument("--week", type=int, metavar="N",
+                   help="Sadece N. haftayı indir")
+    p.add_argument("--all", action="store_true",
+                   help="sync: daha önce indirilenler dahil tümünü indir")
+    return p
+
+
+# ─── Komutlar ────────────────────────────────────────────────
+def cmd_setup():
+    from cli.wizard import run_wizard
+    run_wizard()
+
+
+def cmd_menu(token: str, username: str):
+    from cli.menu import run_main_menu
+    run_main_menu(token, username)
+
+
+def cmd_sync(token: str, args):
+    log = logging.getLogger(__name__)
+    from core.api import get_active_courses
+    from core.downloader import collect_files, download_all
+
+    log.info("Sync başladı...")
+    courses = get_active_courses(token)
+    files   = collect_files(
+        token, courses,
+        file_type=args.format,
+        course_filter=args.course,
+        week_filter=args.week,
+    )
+
+    if not files:
+        log.info("Yeni dosya bulunamadı.")
+        return
+
+    result = download_all(token, files, only_new=not args.all)
+    log.info(
+        "Sync tamamlandı — %d indirildi, %d atlandı, %d başarısız",
+        result["ok"], result["skipped"], result["failed"],
+    )
+
+    if result["failed_files"] and not args.quiet:
+        for ff in result["failed_files"]:
+            log.error("  ❌ %s — %s", ff["file"], ff["error"])
+
+
+def cmd_list(token: str):
+    from core.api import get_active_courses
+    courses = get_active_courses(token)
+    print(f"\n{'#':<4} {'Kod':<10} {'Ders':<44} {'İlerleme'}")
+    print("─" * 70)
+    for i, c in enumerate(courses, 1):
+        code = c.get("courseCode", "?")
+        name = c.get("name", "").strip()[:42]
+        prog = f"%{c.get('progress', 0)}"
+        print(f"{i:<4} {code:<10} {name:<44} {prog}")
+    print()
+
+
+def cmd_status(token: str, username: str):
+    from cli.menu import screen_status
+    screen_status(token, username)
+
+
+def cmd_logout():
+    from core.auth import delete_credentials, clear_sessions
+    delete_credentials()
+    clear_sessions()
+    print("✅ Kimlik bilgileri ve oturumlar silindi.")
+
+
+def cmd_config():
+    from core.config import load
+    import json
+    cfg = load()
+    # Hassas alanları gösterme
+    safe = {k: v for k, v in cfg.items() if "token" not in k.lower()}
+    print(json.dumps(safe, ensure_ascii=False, indent=2))
+
+
+# ─── Main ─────────────────────────────────────────────────────
+def main():
+    parser = build_parser()
+    args   = parser.parse_args()
+
+    setup_logging(args.verbose, args.quiet)
+    log = logging.getLogger(__name__)
+
+    # Setup komutu kilit gerektirmez
+    if args.command == "setup":
+        cmd_setup()
+        return
+
+    # Kilit al
+    if not _acquire_lock():
+        print("⚠️  ALMS zaten çalışıyor. Birden fazla instance başlatılamaz.")
+        sys.exit(1)
+
+    # İlk kurulum yapılmadıysa wizard'a yönlendir
+    from utils.paths import CREDS_FILE
+    if not CREDS_FILE.exists() and args.command != "logout":
+        print("Henüz kurulum yapılmamış. Kurulum sihirbazı başlatılıyor...\n")
+        cmd_setup()
+        return
+
+    # Token al
+    try:
+        from core.auth import get_or_refresh_token
+        token, username = get_or_refresh_token()
+    except Exception as e:
+        log.error("Giriş yapılamadı: %s", e)
+        sys.exit(1)
+
+    # Komutu çalıştır
+    try:
+        if args.command in ("menu", None):
+            cmd_menu(token, username)
+        elif args.command == "sync":
+            cmd_sync(token, args)
+        elif args.command == "list":
+            cmd_list(token)
+        elif args.command == "download":
+            from cli.menu import screen_download
+            screen_download(token)
+        elif args.command == "status":
+            cmd_status(token, username)
+        elif args.command == "logout":
+            cmd_logout()
+        elif args.command == "config":
+            cmd_config()
+    except KeyboardInterrupt:
+        print("\nÇıkılıyor...")
+    except Exception as e:
+        log.exception("Beklenmeyen hata: %s", e)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
