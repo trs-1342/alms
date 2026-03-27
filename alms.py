@@ -126,7 +126,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("command", nargs="?", default="menu",
                    choices=["menu", "setup", "sync", "list",
-                            "download", "status", "logout", "config"],
+                            "download", "today", "open",
+                            "status", "logout", "config"],
                    help="Çalıştırılacak komut (varsayılan: menu)")
     p.add_argument("-v", "--verbose", action="store_true",
                    help="Ayrıntılı loglar")
@@ -159,26 +160,46 @@ def cmd_sync(token: str, args):
     from core.api import get_active_courses
     from core.downloader import collect_files, download_all
 
+    quiet = getattr(args, "quiet", False)
     log.info("Sync başladı...")
     courses = get_active_courses(token)
     files   = collect_files(
         token, courses,
-        file_type=args.format,
-        course_filter=args.course,
-        week_filter=args.week,
+        file_type=getattr(args, "format", None),
+        course_filter=getattr(args, "course", None),
+        week_filter=getattr(args, "week", None),
+        dedup=True,
     )
 
     if not files:
         log.info("Yeni dosya bulunamadı.")
         return
 
-    result = download_all(token, files, only_new=not args.all)
-    log.info(
-        "Sync tamamlandı — %d indirildi, %d atlandı, %d başarısız",
-        result["ok"], result["skipped"], result["failed"],
-    )
+    log.info("📦 %d dosya indirilecek...", len(files))
 
-    if result["failed_files"] and not args.quiet:
+    def on_progress(done, total, f, result):
+        if quiet:
+            return
+        status = "✅" if result["ok"] and not result.get("skipped") else (
+                 "⬛" if result.get("skipped") else "❌")
+        pct = int(done / max(total, 1) * 100)
+        print(f"\r  [{pct:3d}%] {done}/{total} {status} {f['file_name'][:45]:<45}",
+              end="", flush=True)
+
+    result = download_all(token, files, only_new=not getattr(args, "all", False),
+                          on_progress=on_progress)
+
+    if not quiet:
+        print()  # ilerleme satırını kapat
+
+    if result.get("cancelled"):
+        log.warning("Sync iptal edildi — %d indirildi, %d kaldı.",
+                    result["ok"], len(files) - result["ok"] - result["skipped"])
+    else:
+        log.info("Sync tamamlandı — %d indirildi, %d atlandı, %d başarısız",
+                 result["ok"], result["skipped"], result["failed"])
+
+    if result.get("failed_files") and not quiet:
         for ff in result["failed_files"]:
             log.error("  ❌ %s — %s", ff["file"], ff["error"])
 
@@ -194,6 +215,34 @@ def cmd_list(token: str):
         prog = f"%{c.get('progress', 0)}"
         print(f"{i:<4} {code:<10} {name:<44} {prog}")
     print()
+
+
+def cmd_open():
+    """İndirme klasörünü dosya yöneticisinde aç."""
+    import subprocess
+    from core.config import get_download_dir
+    dl = get_download_dir()
+    dl.mkdir(parents=True, exist_ok=True)
+    system = platform.system()
+    if system == "Windows":
+        os.startfile(str(dl))
+    elif system == "Darwin":
+        subprocess.run(["open", str(dl)])
+    else:
+        for cmd in ["xdg-open", "nautilus", "thunar", "dolphin", "nemo"]:
+            try:
+                subprocess.Popen([cmd, str(dl)],
+                                  stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL)
+                break
+            except FileNotFoundError:
+                continue
+    print(f"📁 {dl}")
+
+
+def cmd_today(token: str):
+    from cli.menu import screen_today
+    screen_today(token)
 
 
 def cmd_status(token: str, username: str):
@@ -261,6 +310,10 @@ def main():
         elif args.command == "download":
             from cli.menu import screen_download
             screen_download(token)
+        elif args.command == "today":
+            cmd_today(token)
+        elif args.command == "open":
+            cmd_open()
         elif args.command == "status":
             cmd_status(token, username)
         elif args.command == "logout":
