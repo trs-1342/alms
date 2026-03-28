@@ -249,6 +249,15 @@ def _setup_path():
 def _setup_path_unix(script: Path):
     """~/.local/bin/alms symlink oluşturur."""
     import os
+    # macOS'ta Homebrew Python kullan
+    if platform.system() == "Darwin":
+        for brew_py in [
+            Path("/opt/homebrew/bin/python3"),   # Apple Silicon
+            Path("/usr/local/bin/python3"),       # Intel
+        ]:
+            if brew_py.exists():
+                script = script  # script değişmiyor, sadece venv path için
+                break
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     link = bin_dir / "alms"
@@ -274,7 +283,7 @@ def _setup_path_unix(script: Path):
 
 
 def _setup_path_windows(script: Path):
-    """Windows: kullanıcı PATH'ine script dizini ekler."""
+    """Windows: kullanıcı PATH'ine script dizini ekler ve alms.bat oluşturur."""
     try:
         import winreg
         script_dir = str(script.parent)
@@ -294,7 +303,10 @@ def _setup_path_windows(script: Path):
             winreg.SetValueEx(key, "PATH", 0, winreg.REG_EXPAND_SZ, new_path)
             print(f"  ✅ PATH'e eklendi: {script_dir}")
 
+        # alms.bat wrapper — "alms" komutu olarak çalışsın
         bat = script.parent / "alms.bat"
-        bat.write_text(f'@echo off\n"{sys.executable}" "{script}" %*\n')
+        bat.write_text("@echo off\n" + f'"{sys.executable}" "{script}" %*\n')
+        print(f"  ✅ alms.bat oluşturuldu: {bat}")
+
     except Exception as e:
         print(f"  ⚠️  PATH eklenemedi: {e}")
