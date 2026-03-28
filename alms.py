@@ -144,7 +144,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("command", nargs="?", default="menu",
                    choices=["menu", "setup", "sync", "list",
                             "download", "today", "open",
-                            "status", "logout", "config"],
+                            "status", "stats", "log", "export",
+                            "logout", "config"],
                    help="Çalıştırılacak komut (varsayılan: menu)")
     p.add_argument("-v", "--verbose", action="store_true",
                    help="Ayrıntılı loglar")
@@ -218,6 +219,13 @@ def cmd_sync(token: str, args):
              f" (dersler: {', '.join(course_filter)})" if course_filter else "")
     log_action("sync_start", {"force": force, "courses": course_filter or []})
 
+    # B: Sync başlangıç bildirimi (otomasyon/cron için de çalışır)
+    from utils.notify import send as notify
+    from core.config import get as cfg_get
+    if cfg_get("notify_desktop"):
+        label = f"({', '.join(course_filter)})" if course_filter else "Tüm dersler"
+        notify("ALMS Sync Başladı", label)
+
     all_courses = get_active_courses(token)
 
     if course_filter:
@@ -247,14 +255,31 @@ def cmd_sync(token: str, args):
 
     log.info("📦 %d dosya indirilecek...", len(files))
 
+    _ok_count    = [0]
+    _fail_count  = [0]
+
     def on_progress(done, total, f, result):
-        if quiet:
-            return
+        if result["ok"] and not result.get("skipped"):
+            _ok_count[0] += 1
+        elif not result["ok"]:
+            _fail_count[0] += 1
+
+        pct    = int(done / max(total, 1) * 100)
+        bar_w  = 20
+        filled = int(bar_w * pct / 100)
+        bar    = "█" * filled + "░" * (bar_w - filled)
+
         status = "✅" if result["ok"] and not result.get("skipped") else (
                  "⬛" if result.get("skipped") else "❌")
-        pct = int(done / max(total, 1) * 100)
-        print(f"\r  [{pct:3d}%] {done}/{total} {status} {f['file_name'][:45]:<45}",
-              end="", flush=True)
+
+        if quiet:
+            # Cron modunda sadece log'a yaz (her %10'da bir)
+            if pct % 10 == 0 or done == total:
+                log.info("  %d/%d (%d%%) — ✅%d ❌%d",
+                         done, total, pct, _ok_count[0], _fail_count[0])
+        else:
+            print(f"\r  [{bar}] {pct:3d}%  {done}/{total} {status} {f['file_name'][:38]:<38}",
+                  end="", flush=True)
 
     result = download_all(token, files, only_new=not force, on_progress=on_progress)
 
@@ -274,6 +299,14 @@ def cmd_sync(token: str, args):
     else:
         log.info("Sync tamamlandı — %d indirildi, %d atlandı, %d başarısız",
                  result["ok"], result["skipped"], result["failed"])
+        if cfg_get("notify_desktop") and (result["ok"] > 0 or result["failed"] > 0):
+            if result["ok"] > 0:
+                msg = f"{result['ok']} dosya indirildi"
+                if result["failed"]:
+                    msg += f", {result['failed']} başarısız"
+                notify("ALMS Sync Tamamlandı ✅", msg)
+            else:
+                notify("ALMS Sync", "Yeni dosya bulunamadı")
 
     if result.get("failed_files") and not quiet:
         for ff in result["failed_files"]:
@@ -392,6 +425,15 @@ def main():
             cmd_open()
         elif args.command == "status":
             cmd_status(token, username)
+        elif args.command == "stats":
+            from cli.menu import screen_stats
+            screen_stats()
+        elif args.command == "log":
+            from cli.menu import screen_log
+            screen_log()
+        elif args.command == "export":
+            from cli.menu import cmd_export
+            cmd_export(token)
         elif args.command == "logout":
             cmd_logout()
         elif args.command == "config":

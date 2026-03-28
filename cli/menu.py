@@ -114,11 +114,40 @@ def _t(key):
     return (TR if lang == "tr" else EN).get(key, key)
 
 
+import random
+
+_QUOTES = [
+    "Kod yazmak zor değil; zor olan ne yazacağını bilmektir.",
+    "Hata yapmak seni kötü yapmaz, aynı hatayı anlamadan tekrar etmek yapar.",
+    "Stack Overflow seni kurtarabilir ama seni geliştirmez.",
+    "Kopyaladığın kod çalışıyorsa şanslısın; anlıyorsan tehlikelisin.",
+    "Bir dili öğrenmek başarı değildir, problemi çözebilmek başarıdır.",
+    '"Biliyorum" dediğin anda gelişimin durur.',
+    "En iyi yazılımcılar hızlı olanlar değil, hata ayıklamayı bilenlerdir.",
+    "Proje bitirmek, tutorial izlemekten daha değerlidir.",
+    "Temeli atlamanın bedelini her projede tekrar ödersin.",
+    "Kodun çalışması yeterli değil; okunabilir olması seni profesyonel yapar.",
+    "Disiplin, motivasyondan daha uzun yaşar.",
+    "Her yeni teknolojiye atlamak seni ileri götürmez, derinleşmek götürür.",
+    "Yazılım öğrenmek maraton; sprint gibi koşarsan yarı yolda kalırsın.",
+    "her kod kusurludur, çünkü insanın kendisi böyledir.\n-trs"
+]
+
+_last_quote = [None]  # Ana menüde tekrar basılmasın diye
+
+
+def _random_quote() -> str:
+    available = [q for q in _QUOTES if q != _last_quote[0]]
+    q = random.choice(available)
+    _last_quote[0] = q
+    return q
+
+
 def clear():
     os.system("cls" if platform.system() == "Windows" else "clear")
 
 
-def header(title=""):
+def header(title="", show_quote=False):
     clear()
     w = 54
     print(cyan("╔" + "═" * w + "╗"))
@@ -126,6 +155,31 @@ def header(title=""):
     if title:
         print(cyan("║") + yellow(f"  {title:<{w-2}}") + cyan("║"))
     print(cyan("╚" + "═" * w + "╝"))
+
+    if show_quote:
+        q = _random_quote()
+        # Özlü söz — max 52 karakter genişliğine sığdır
+        words  = q.split()
+        lines  = []
+        line   = ""
+        for w_word in words:
+            if len(line) + len(w_word) + 1 <= 50:
+                line = (line + " " + w_word).strip()
+            else:
+                lines.append(line)
+                line = w_word
+        if line:
+            lines.append(line)
+
+        print()
+        for l in lines:
+            print(f"  {dim(l)}")
+
+        # trs sözü — kırmızı, her zaman göster
+        # print()
+        # print(f"  {red('her kod kusurludur, çünkü insanın kendisi böyledir.')}")
+        # print(f"  {red('                                          —trs')}")
+
     print()
 
 
@@ -210,18 +264,23 @@ def file_selector(files):
     """
     Ders bazlı gruplu dosya seçici.
     F tuşu ile kelime filtresi, infinite scroll, grup toggle.
+    İndirilmiş dosyalar farklı renkte gösterilir.
     Döner: seçilen dosyaların listesi.
     """
     if not files:
         return []
 
+    from core.downloader import is_downloaded
+
     groups      = _group_by_course(files)
     selected    = {id(f): False for f in files}
+    # İndirilmiş dosyaları başta hesapla (disk IO, bir kez)
+    downloaded  = {id(f): is_downloaded(f) for f in files}
     all_ordered = [f for gfiles in groups.values() for f in gfiles]
-    filt        = ""      # aktif filtre metni
+    filt        = ""
     cursor      = 0
     PAGE        = 15
-    filter_mode = False   # F tuşuna basıldığında True
+    filter_mode = False
 
     def _filtered():
         if not filt:
@@ -242,7 +301,8 @@ def file_selector(files):
 
         hint_items = [
             ("↑↓", "hareket"), ("SPACE", "seç"), ("G", "grup"),
-            ("A", "hepsi"), ("N", "temizle"), ("F", "filtrele"),
+            ("A", "hepsi"), ("N", "temizle"),
+            ("F", "filtrele  ESC=temizle  ENTER=kapat"),
             ("ENTER", "onayla"), ("Q", "iptal"),
         ]
         hint = "  ".join(f"{bold(k)} {dim(v)}" for k, v in hint_items)
@@ -272,19 +332,44 @@ def file_selector(files):
                     print(f"\n  {arrow_h} {bold(cyan(code))}  {dim(f'{g_sel}/{len(g_all)}')}")
                     prev_code = code
 
-                mb    = f"{f['size_bytes']/1_048_576:.1f} MB"
-                chk   = green("●") if selected[id(f)] else dim("○")
-                name  = f["file_name"][:40]
-                row   = f"  {chk} W{f['week']:02d}  {name:<40} {mb:>7}"
-                arrow = bold(cyan("  ▶ ")) if i == cursor else "    "
-                line  = bold(row) if i == cursor else (green(row) if selected[id(f)] else row)
+                mb      = f"{f['size_bytes']/1_048_576:.1f} MB"
+                is_dl   = downloaded.get(id(f), False)
+                is_sel  = selected[id(f)]
+                is_cur  = i == cursor
+
+                # Seçim ikonu
+                if is_sel:
+                    chk = green("●")
+                elif is_dl:
+                    chk = yellow("◉")   # indirilmiş ama seçilmemiş
+                else:
+                    chk = dim("○")
+
+                # İndirilmiş işareti
+                dl_tag = dim(" ✓") if is_dl else "  "
+
+                name = f["file_name"][:38]
+                row  = f"  {chk} W{f['week']:02d}  {name:<38}{dl_tag} {mb:>7}"
+                arrow = bold(cyan("  ▶ ")) if is_cur else "    "
+
+                if is_cur:
+                    line = bold(row)
+                elif is_sel:
+                    line = green(row)
+                elif is_dl:
+                    line = yellow(row)   # indirilmiş = sarı
+                else:
+                    line = row
+
                 print(f"{arrow}{line}")
 
-        total_sel = sum(1 for v in selected.values() if v)
-        sel_mb    = sum(f["size_bytes"] for f in all_ordered if selected[id(f)]) / 1_048_576
-        sel_label = _t("selected")
-        count_str = f"{len(_filtered())}/{len(all_ordered)}" if filt else str(len(all_ordered))
-        print(f"\n  {yellow(f'{total_sel} {sel_label}  (~{sel_mb:.1f} MB)')}  {dim(count_str + ' dosya')}")
+        total_sel  = sum(1 for v in selected.values() if v)
+        total_dl   = sum(1 for v in downloaded.values() if v)
+        sel_mb     = sum(f["size_bytes"] for f in all_ordered if selected[id(f)]) / 1_048_576
+        sel_label  = _t("selected")
+        count_str  = f"{len(_filtered())}/{len(all_ordered)}" if filt else str(len(all_ordered))
+        dl_str     = f"  {yellow(f'◉ {total_dl} indirilmiş')}" if total_dl else ""
+        print(f"\n  {yellow(f'{total_sel} {sel_label}  (~{sel_mb:.1f} MB)')}  {dim(count_str + ' dosya')}{dl_str}")
 
     def _toggle_group(f, ordered):
         code   = f["course_code"] or f["course_name"][:12]
@@ -302,20 +387,36 @@ def file_selector(files):
             cursor = safe_cursor
 
         _render(ordered)
+        key = _getch()
 
         if filter_mode:
-            # Filtre modunda klavyeden karakter oku
-            key = _getch()
-            if key in ("\r", "\n", "\x1b"):
+            if key in ("\r", "\n"):
+                # Enter → filtreden çık, listeye dön (filtre aktif kalır)
                 filter_mode = False
+            elif key in ("\x1b",):
+                # ESC → filtreyi tamamen temizle ve çık
+                filter_mode = False
+                filt = ""
+                cursor = 0
+            elif key in ("f", "F"):
+                # F tekrar → filtreden çık
+                filter_mode = False
+            elif key == "UP":
+                filter_mode = False
+                cursor = (cursor - 1) % max(1, len(ordered))
+            elif key == "DOWN":
+                filter_mode = False
+                cursor = (cursor + 1) % max(1, len(ordered))
             elif key in ("\x7f", "\x08"):   # Backspace
                 filt = filt[:-1]
+                cursor = 0
+            elif key == "\x03":             # Ctrl+C
+                return []
             elif key and len(key) == 1 and key.isprintable():
                 filt += key
-            cursor = 0
+                cursor = 0
             continue
 
-        key = _getch()
         if not ordered:
             if key in ("q", "Q", "\x03", "\x1b"):
                 return []
@@ -341,7 +442,7 @@ def file_selector(files):
                 selected[id(f)] = False
         elif key in ("f", "F"):
             filter_mode = True
-            filt = ""
+            # Mevcut filtreyi koru — sıfırlama
             cursor = 0
         elif key in ("\r", "\n"):
             return [f for f in all_ordered if selected[id(f)]]
@@ -352,9 +453,10 @@ def file_selector(files):
 # ─── Ders listesi ─────────────────────────────────────────────
 def screen_list_courses(token):
     from core.api import get_active_courses
+    from utils.spinner import Spinner
     header(_t("opt_list"))
-    print(f"  {dim('Dersler alınıyor...')}")
-    courses = get_active_courses(token)
+    with Spinner("Dersler alınıyor..."):
+        courses = get_active_courses(token)
 
     print(f"\n  {bold('Kod'):<12} {bold('Ders'):<44} {bold('İlerleme')}")
     print("  " + cyan("─" * 68))
@@ -377,45 +479,119 @@ def screen_download(token):
     from core.api import get_active_courses
     from core.downloader import collect_files, download_all, deduplicate, sync_manifest_with_disk
     from utils.logger import log_action
+    from utils.spinner import Spinner
 
     header(_t("opt_download"))
     sync_manifest_with_disk()
 
-    print(f"  {bold('Dosya tipi')}:")
-    ft_idx   = menu([_t("all_types"), _t("pdf_only"), _t("video_only")])
-    ft_map   = {0: None, 1: "pdf", 2: "video"}
-    file_type = ft_map.get(ft_idx)
+    # Önce ders listesini çek
+    with Spinner("Dersler alınıyor..."):
+        courses = get_active_courses(token)
 
-    course_f = ask(_t("filter_course"))
+    if not courses:
+        print(f"  {red('Ders bulunamadı.')}")
+        pause()
+        return
+
+    # ── C özelliği: Ders seçimi + her ders için dosya türü ────
+    print(f"  {bold('Hangi dersleri tarayalım?')}")
+    print(f"  {dim('(Boş bırak = hepsi)')}\n")
+    for i, c in enumerate(courses, 1):
+        code = c.get("courseCode", "?")
+        name = c.get("name", "").strip()[:38]
+        print(f"  {cyan(f'[{i}]')} {yellow(code):<10} {name}")
+    print(f"  {cyan('[0]')} Tümü\n")
+
+    raw = ask("Ders numaraları (örn: 1,3 — boş = hepsi)", "")
+    selected_courses = []
+    if raw:
+        for part in raw.split(","):
+            part = part.strip()
+            if part.isdigit() and part != "0":
+                idx = int(part) - 1
+                if 0 <= idx < len(courses):
+                    selected_courses.append(courses[idx])
+    if not selected_courses:
+        selected_courses = courses
+
+    # Her seçili ders için dosya türü sor (birden fazla ders varsa genel sor)
+    if len(selected_courses) == 1:
+        c = selected_courses[0]
+        code = c.get("courseCode", c.get("name", "")[:10])
+        print(f"\n  {bold(code)} için dosya tipi:")
+        ft_idx = menu([_t("all_types"), _t("pdf_only"), _t("video_only")])
+        course_filters = {id(c): {0: None, 1: "pdf", 2: "video"}.get(ft_idx)}
+        global_ft = course_filters[id(c)]
+    else:
+        print(f"\n  {bold('Dosya tipi')} ({len(selected_courses)} ders için):")
+        ft_idx = menu([
+            _t("all_types"),
+            _t("pdf_only"),
+            _t("video_only"),
+            "Her ders için ayrı ayrı sor",
+        ])
+        ft_map = {0: None, 1: "pdf", 2: "video"}
+        if ft_idx == 3:
+            # Her ders için ayrı sor
+            course_filters = {}
+            for c in selected_courses:
+                code = c.get("courseCode", c.get("name", "")[:10])
+                print(f"\n  {yellow(code)} için dosya tipi:")
+                ci = menu([_t("all_types"), _t("pdf_only"), _t("video_only")])
+                course_filters[id(c)] = ft_map.get(ci)
+            global_ft = None
+        else:
+            global_ft = ft_map.get(ft_idx)
+            course_filters = {id(c): global_ft for c in selected_courses}
+
     week_raw = ask(_t("filter_week"))
     week_f   = int(week_raw) if week_raw.isdigit() else None
 
-    print(f"\n  {dim('Dersler taranıyor...')}")
-    courses = get_active_courses(token)
-    files   = collect_files(
-        token, courses,
-        file_type=file_type,
-        course_filter=course_f or None,
-        week_filter=week_f,
-        dedup=True,
-    )
+    # Dosyaları topla
+    with Spinner("Dosyalar taranıyor..."):
+        all_files = []
+        for c in selected_courses:
+            ft = course_filters.get(id(c), global_ft)
+            chunk = collect_files(
+                token, [c],
+                file_type=ft,
+                course_filter=None,
+                week_filter=week_f,
+                dedup=True,
+            )
+            all_files.extend(chunk)
 
-    if not files:
+    if not all_files:
         print(f"\n  {red(_t('no_files'))}")
         pause()
         return
 
-    total_mb = sum(f["size_bytes"] for f in files) / 1_048_576
-    print(f"\n  {green(str(len(files)))} dosya  (~{total_mb:.0f} MB)")
+    total_mb = sum(f["size_bytes"] for f in all_files) / 1_048_576
+    print(f"\n  {green(str(len(all_files)))} dosya  (~{total_mb:.0f} MB)")
     pause()
 
-    chosen = file_selector(files)
+    chosen = file_selector(all_files)
 
     if not chosen:
         clear()
         print(f"\n  {yellow(_t('no_selection'))}")
         pause()
         return
+
+    # İndirilmiş dosya uyarısı
+    from core.downloader import is_downloaded
+    already = [f for f in chosen if is_downloaded(f)]
+    force   = False
+    if already:
+        clear()
+        print(f"\n  {yellow(f'⚠️  {len(already)} dosya zaten indirilmiş:')}")
+        for f in already[:5]:
+            print(f"  {dim('•')} {f['course_code']} W{f['week']:02d}  {f['file_name'][:45]}")
+        if len(already) > 5:
+            print(f"  {dim(f'... ve {len(already)-5} dosya daha')}")
+        print()
+        force = yn("Zaten indirilen dosyaları tekrar indir?", default=False)
+        print()
 
     from core.config import get_download_dir
     dl_dir = get_download_dir()
@@ -435,7 +611,7 @@ def screen_download(token):
             completed.append((f, result.get("path", "")))
 
     log_action("download_start", {"selected": len(chosen)})
-    result = download_all(token, chosen, only_new=True, on_progress=on_progress)
+    result = download_all(token, chosen, only_new=not force, on_progress=on_progress)
     log_action("download_end", {
         "ok": result["ok"], "skipped": result["skipped"], "failed": result["failed"],
     })
@@ -467,6 +643,14 @@ def screen_download(token):
         print(f"\n  {red('Başarısız:')}")
         for ff in result["failed_files"]:
             print(f"    {dim('•')} {ff['file']} — {red(ff['error'][:60])}")
+
+    # İndirme klasörünü aç?
+    if result["ok"] > 0:
+        from core.config import get as cfg_get
+        if cfg_get("open_after_download"):
+            cmd_open()
+        elif yn("\n  İndirme klasörünü aç?", default=False):
+            cmd_open()
 
     pause()
 
@@ -588,10 +772,14 @@ def screen_settings():
 
     while True:
         header(_t("settings_title"))
-        c = cfg.load()
-        print(f"  {cyan('[1]')} {_t('set_dir'):<32} {dim(c.get('download_dir',''))}")
-        print(f"  {cyan('[2]')} {_t('set_parallel'):<32} {yellow(str(c.get('parallel',3)))}")
-        print(f"  {cyan('[3]')} {_t('set_lang'):<32} {yellow(c.get('language','tr'))}")
+        c        = cfg.load()
+        open_aft = c.get("open_after_download", False)
+        notify   = c.get("notify_desktop", True)
+        print(f"  {cyan('[1]')} {_t('set_dir'):<34} {dim(c.get('download_dir',''))}")
+        print(f"  {cyan('[2]')} {_t('set_parallel'):<34} {yellow(str(c.get('parallel',3)))}")
+        print(f"  {cyan('[3]')} {_t('set_lang'):<34} {yellow(c.get('language','tr'))}")
+        print(f"  {cyan('[4]')} {'İndirince klasörü otomatik aç':<34} {green('Açık') if open_aft else dim('Kapalı')}")
+        print(f"  {cyan('[5]')} {'Masaüstü bildirimi':<34} {green('Açık') if notify else dim('Kapalı')}")
         print(f"  {cyan('[0]')} {_t('back')}")
         print()
         raw = input(f"  {bold(_t('choose'))}: ").strip()
@@ -609,6 +797,10 @@ def screen_settings():
                 cfg.set_value("language", "tr")
             elif idx == 1:
                 cfg.set_value("language", "en")
+        elif raw == "4":
+            cfg.set_value("open_after_download", not open_aft)
+        elif raw == "5":
+            cfg.set_value("notify_desktop", not notify)
         else:
             break
 
@@ -870,6 +1062,94 @@ def screen_log():
 
 
 # ─── Ana menü ─────────────────────────────────────────────────
+
+# ─── Dışa Aktar ───────────────────────────────────────────────
+def cmd_export(token):
+    """Ders listesi + indirilen dosya indexini dışa aktar."""
+    import json
+    from pathlib import Path
+    from core.api import get_active_courses
+    from utils.paths import MANIFEST_FILE
+    from core.config import get_download_dir
+    from utils.spinner import Spinner
+    import datetime
+
+    header("Dışa Aktar")
+    print(f"  {bold('Format seç')}:")
+    fmt_idx = menu(["Markdown (.md)", "JSON (.json)", "İkisi de"])
+    if fmt_idx == -1:
+        return
+
+    with Spinner("Dersler alınıyor..."):
+        courses = get_active_courses(token)
+
+    dl_dir = get_download_dir()
+    now    = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts     = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+
+    course_data = []
+    for c in courses:
+        code  = c.get("courseCode", "?")
+        name  = c.get("name", "").strip()
+        prog  = c.get("progress", 0)
+        course_path = dl_dir / code
+        downloaded  = []
+        if course_path.exists():
+            for f in sorted(course_path.rglob("*")):
+                if f.is_file():
+                    downloaded.append({
+                        "path": str(f.relative_to(dl_dir)),
+                        "size": f.stat().st_size,
+                        "week": f.parent.name,
+                    })
+        course_data.append({
+            "code": code, "name": name,
+            "progress": prog, "downloaded": downloaded,
+        })
+
+    def to_markdown() -> str:
+        lines = [
+            "# ALMS Ders Materyali Indexi", "",
+            f"Oluşturuldu: {now}",
+            f"İndirme klasörü: `{dl_dir}`", "", "---", "",
+        ]
+        for c in course_data:
+            lines += [f"## {c['code']} — {c['name']}", ""]
+            lines.append(f"İlerleme: %{c['progress']}")
+            lines.append("")
+            if c["downloaded"]:
+                lines += ["| Hafta | Dosya | Boyut |", "|-------|-------|-------|"]
+                for f in c["downloaded"]:
+                    mb = f"{f['size']/1_048_576:.1f} MB"
+                    lines.append(f"| {f['week']} | `{Path(f['path']).name}` | {mb} |")
+            else:
+                lines.append("*Henüz indirilmedi*")
+            lines.append("")
+        return "\n".join(lines)
+
+    def to_json() -> str:
+        return json.dumps({
+            "exported_at": now, "download_dir": str(dl_dir),
+            "courses": course_data,
+        }, ensure_ascii=False, indent=2)
+
+    saved = []
+    dl_dir.mkdir(parents=True, exist_ok=True)
+
+    if fmt_idx in (0, 2):
+        p = dl_dir / f"alms_index_{ts}.md"
+        p.write_text(to_markdown(), encoding="utf-8")
+        saved.append(str(p))
+    if fmt_idx in (1, 2):
+        p = dl_dir / f"alms_index_{ts}.json"
+        p.write_text(to_json(), encoding="utf-8")
+        saved.append(str(p))
+
+    print(f"\n  {green('✅')} Dışa aktarıldı:")
+    for p in saved:
+        print(f"  {dim('📄')} {p}")
+    pause()
+
 def _token_warning(token, username):
     """Token 30 dk'dan az kaldıysa ana menüde uyarı göster."""
     from core.auth import get_active_session
@@ -888,7 +1168,7 @@ def _token_warning(token, username):
 
 def run_main_menu(token, username):
     while True:
-        header()
+        header(show_quote=True)
         print(f"  {bold('👤')} {green(username)}\n")
         _token_warning(token, username)
 
@@ -901,6 +1181,7 @@ def run_main_menu(token, username):
             _t("opt_status"),
             "İstatistikler",
             "Aktivite Logu",
+            "Dışa Aktar",
             _t("opt_settings"),
             _t("opt_auto"),
             red(_t("opt_exit")),
@@ -916,17 +1197,25 @@ def run_main_menu(token, username):
             from core.downloader import collect_files, download_all, sync_manifest_with_disk
             from utils.logger import log_action
             from utils.notify import send as notify
+            from utils.spinner import Spinner
             from core.config import get as cfg_get
             header(_t("opt_sync"))
             sync_manifest_with_disk()
-            print(f"  {dim('Taranıyor...')}")
             log_action("sync_start", {"force": False})
-            courses = get_active_courses(token)
-            files   = collect_files(token, courses, dedup=True)
+
+            # B: Sync başlangıç bildirimi
+            if cfg_get("notify_desktop"):
+                notify("ALMS Sync", "Yeni dosyalar taranıyor...")
+
+            with Spinner("Dersler taranıyor..."):
+                courses = get_active_courses(token)
+                files   = collect_files(token, courses, dedup=True)
+
             if not files:
                 print(f"  {dim('Yeni dosya yok.')}")
                 log_action("sync_end", {"found": 0})
             else:
+                print(f"  {green(str(len(files)))} yeni dosya bulundu\n")
                 result = download_all(token, files, only_new=True)
                 log_action("sync_end", {
                     "found": len(files), "ok": result["ok"],
@@ -935,8 +1224,12 @@ def run_main_menu(token, username):
                 print(f"\n  {green('✅')} {result['ok']} indirildi  "
                       f"{dim('⬛')} {result['skipped']} atlandı  "
                       f"{red('❌')} {result['failed']} başarısız")
-                if result["ok"] > 0 and cfg_get("notify_desktop"):
-                    notify("ALMS Sync", f"{result['ok']} yeni dosya indirildi")
+                # B: Sync bitiş bildirimi
+                if cfg_get("notify_desktop"):
+                    msg = f"{result['ok']} dosya indirildi"
+                    if result["failed"]:
+                        msg += f", {result['failed']} başarısız"
+                    notify("ALMS Sync Tamamlandı", msg)
             pause()
         elif idx == 3:
             screen_today(token)
@@ -950,8 +1243,10 @@ def run_main_menu(token, username):
         elif idx == 7:
             screen_log()
         elif idx == 8:
-            screen_settings()
+            cmd_export(token)
         elif idx == 9:
+            screen_settings()
+        elif idx == 10:
             screen_auto(token)
         else:
             break

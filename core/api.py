@@ -16,7 +16,7 @@ STREAM_HOST     = "almsp-stream.gelisim.edu.tr"
 REQUEST_TIMEOUT = 20
 
 _USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) "
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
@@ -146,7 +146,7 @@ def get_courses(token: str) -> list[dict]:
     courses = data if isinstance(data, list) else data.get("items", [])
     for c in courses:
         c["courseCode"] = parse_course_code(c.get("name", ""))
-    log.info("📚 %d ders alındı.", len(courses))
+    log.debug("📚 %d ders alındı.", len(courses))
     return courses
 
 
@@ -210,5 +210,5 @@ def get_calendar(token: str, days: int = 30) -> list[dict]:
         "Take": 100, "Skip": 0,
     })
     items = data if isinstance(data, list) else data.get("items", [])
-    log.info("📅 %d aktivite alındı (%d günlük).", len(items), days)
+    log.debug("📅 %d aktivite alındı (%d günlük).", len(items), days)
     return items

@@ -86,7 +86,7 @@ def deduplicate(files: list[dict]) -> tuple[list[dict], int]:
     clean = list(seen.values())
     removed = len(files) - len(clean)
     if removed:
-        log.info("🔁 %d duplicate dosya filtrelendi.", removed)
+        log.debug("🔁 %d duplicate dosya filtrelendi.", removed)
     return clean, removed
 
 
@@ -113,7 +113,7 @@ def collect_files(
             if filt not in cname.upper() and filt not in ccode.upper():
                 continue
 
-        log.info("  📖 %s", cname)
+        log.debug("  📖 %s", cname)
 
         try:
             weeks = get_term_weeks(token, cid, courseid)
@@ -187,6 +187,16 @@ def _build_dest(f: dict) -> Path:
     course_dir = base / folder
     week_dir   = course_dir / f"Hafta_{f['week']:02d}"
     return week_dir / _safe_name(f["file_name"])
+
+
+def is_downloaded(f: dict) -> bool:
+    """Dosya daha önce indirildi mi? (disk kontrolü)"""
+    dest = _build_dest(f)
+    if not dest.exists():
+        return False
+    size_exp = f.get("size_bytes", 0)
+    ok, _ = verify_download(dest, size_exp)
+    return ok
 
 
 def _is_error_response(r: requests.Response) -> tuple[bool, str]:
@@ -292,8 +302,14 @@ def download_all(
     for f in files:
         h = _url_hash(f["file_path"])
         if only_new and h in manifest:
-            pre_skipped += 1
-            continue
+            # Manifest'te var — ama dosya gerçekten diskte mi?
+            saved_path = manifest[h]
+            if Path(saved_path).exists():
+                pre_skipped += 1
+                continue
+            else:
+                # Diskten silinmiş — manifest'ten de çıkar, yeniden indir
+                del manifest[h]
         to_download.append(f)
 
     total   = len(to_download)

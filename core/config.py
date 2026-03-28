@@ -21,7 +21,8 @@ DEFAULTS = {
     "auto_sync":      False,
     "auto_sync_hour": 8,
     "auto_sync_min":  0,
-    "auto_sync_courses": [],  # boş = tüm dersler, ["FIZ108","YZM102"] = sadece bunlar
+    "auto_sync_courses": [],  # boş = tüm dersler
+    "open_after_download": False,  # indirme sonrası klasörü otomatik aç, ["FIZ108","YZM102"] = sadece bunlar
 }
 
 

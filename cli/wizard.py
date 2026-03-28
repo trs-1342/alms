@@ -132,13 +132,22 @@ def run_wizard(reconfigure: str | None = None) -> bool:
             auto_hour = int(h_raw) if h_raw.isdigit() and 0 <= int(h_raw) <= 23 else 8
             auto_min  = int(m_raw) if m_raw.isdigit() and 0 <= int(m_raw) <= 59 else 0
 
+        # ── İndirme sonrası klasör ────────────────────────────────
+        print()
+        open_raw = _ask("İndirme tamamlanınca klasör otomatik açılsın mı? [e/H]", "H")
+        if open_raw is None:
+            print("\n  Kurulum iptal edildi.")
+            return False
+        open_after = open_raw.lower() in ("e", "y", "evet", "yes")
+
         # ── Config kaydet ─────────────────────────────────────────
         cfg = load_cfg()
-        cfg["language"]       = lang
-        cfg["download_dir"]   = dl_dir
-        cfg["auto_sync"]      = auto
-        cfg["auto_sync_hour"] = auto_hour
-        cfg["auto_sync_min"]  = auto_min
+        cfg["language"]            = lang
+        cfg["download_dir"]        = dl_dir
+        cfg["auto_sync"]           = auto
+        cfg["auto_sync_hour"]      = auto_hour
+        cfg["auto_sync_min"]       = auto_min
+        cfg["open_after_download"] = open_after
         save_cfg(cfg)
 
         # ── Otomasyon kur ─────────────────────────────────────────

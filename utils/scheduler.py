@@ -10,10 +10,6 @@ from pathlib import Path
 
 
 def _resolve_python() -> str:
-    """
-    .venv Python'unu bul — yoksa sys.executable kullan.
-    Menüden değil, dosya sistemi üzerinden bulur (cron için güvenli).
-    """
     script_dir = Path(__file__).parent.parent
     for candidate in [
         script_dir / ".venv" / "bin" / "python",
@@ -32,32 +28,66 @@ WORK_DIR = str(Path(__file__).parent.parent)
 JOB_NAME = "ALMSScraper"
 PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / "com.alms.scraper.plist"
 
+# Cron satırlarını tanımlamak için sabit etiket
+_CRON_TAG       = "# ALMS-SCHEDULER"
+_REBOOT_TAG     = "# ALMS-REBOOT"
+
 
 def _wrapper_script_path() -> Path:
-    """Cron için shell wrapper script yolu."""
     from utils.paths import CONFIG_DIR
     return CONFIG_DIR / "alms_cron.sh"
 
 
 def _write_wrapper(courses: list[str] | None = None) -> Path:
     """
-    Cron'dan çağrılacak shell wrapper yaz.
-    Shell script yaklaşımı: ortam değişkenleri, hata yakalama, log — hepsi net.
+    Cron wrapper script'i yaz.
+    - Başlangıç ve bitiş bildirimleri (DISPLAY/DBUS ile)
+    - İlerleme yüzdesi log'a
+    - Lock mekanizması
     """
     course_args = f" --courses {','.join(courses)}" if courses else ""
     log_file    = Path.home() / ".config" / "alms" / "cron.log"
+    home        = Path.home()
 
     script = f"""#!/bin/bash
 # ALMS otomatik indirme — cron wrapper
 # Oluşturuldu: scheduler.py tarafından
 
-export HOME="{Path.home()}"
+export HOME="{home}"
 export PATH="/usr/local/bin:/usr/bin:/bin"
+
+# Masaüstü bildirimi için DBUS/DISPLAY bul
+find_display() {{
+    for pid in $(pgrep -u "$USER" -x Xorg 2>/dev/null || pgrep -u "$USER" -x Xwayland 2>/dev/null); do
+        local d=$(cat /proc/"$pid"/environ 2>/dev/null | tr '\\0' '\\n' | grep '^DISPLAY=' | cut -d= -f2)
+        [ -n "$d" ] && echo "$d" && return
+    done
+    echo ":0"
+}}
+
+find_dbus() {{
+    local uid=$(id -u)
+    local bus="/run/user/$uid/bus"
+    [ -S "$bus" ] && echo "unix:path=$bus" && return
+    for pid in $(pgrep -u "$USER" dbus-daemon 2>/dev/null | head -1); do
+        cat /proc/"$pid"/environ 2>/dev/null | tr '\\0' '\\n' | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2- && return
+    done
+}}
+
+send_notify() {{
+    local title="$1"
+    local msg="$2"
+    local disp=$(find_display)
+    local dbus=$(find_dbus)
+    export DISPLAY="$disp"
+    [ -n "$dbus" ] && export DBUS_SESSION_BUS_ADDRESS="$dbus"
+    notify-send --app-name="ALMS" --urgency=normal "$title" "$msg" 2>/dev/null || true
+}}
 
 PYTHON="{PYTHON}"
 SCRIPT="{SCRIPT}"
 LOG="{log_file}"
-LOCK="{Path.home()}/.config/alms/.cron.lock"
+LOCK="{home}/.config/alms/.cron.lock"
 
 # Zaten çalışıyor mu?
 if [ -f "$LOCK" ]; then
@@ -74,13 +104,31 @@ trap "rm -f '$LOCK'" EXIT
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [START] ALMS sync başlıyor{course_args}" >> "$LOG"
 
-"$PYTHON" "$SCRIPT" sync --quiet{course_args} >> "$LOG" 2>&1
-EXIT_CODE=$?
+# Başlangıç bildirimi
+send_notify "ALMS Sync Başladı" "Ders materyalleri indiriliyor...{course_args}"
 
-if [ $EXIT_CODE -eq 0 ]; then
+# Sync çalıştır — çıktıyı geçici dosyaya al (yüzde hesabı için)
+TMPOUT=$(mktemp)
+"$PYTHON" "$SCRIPT" sync --quiet{course_args} 2>&1 | tee "$TMPOUT" >> "$LOG"
+EXIT_CODE=${{PIPESTATUS[0]}}
+
+# Sonuç özeti çıkar
+OK_COUNT=$(grep -c "✅\\|indirildi" "$TMPOUT" 2>/dev/null || echo "0")
+FAIL_COUNT=$(grep -c "❌\\|başarısız" "$TMPOUT" 2>/dev/null || echo "0")
+rm -f "$TMPOUT"
+
+if [ "$EXIT_CODE" -eq 0 ]; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [OK] Sync tamamlandı" >> "$LOG"
+    # Bitiş bildirimi
+    if grep -q "indirildi" "$LOG" 2>/dev/null; then
+        LAST_RESULT=$(tail -20 "$LOG" | grep "Sync tamamlandı" | tail -1 || echo "")
+        send_notify "ALMS Sync Tamamlandı ✅" "İndirme başarıyla tamamlandı"
+    else
+        send_notify "ALMS Sync Tamamlandı" "Yeni dosya bulunamadı"
+    fi
 else
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [ERROR] Sync başarısız (exit=$EXIT_CODE)" >> "$LOG"
+    send_notify "ALMS Sync Başarısız ❌" "Hata oluştu, log: $LOG"
 fi
 """
     path = _wrapper_script_path()
@@ -92,80 +140,63 @@ fi
 
 # ─── Linux: cron servisi kontrolü ───────────────────────────
 def _ensure_cron_running() -> None:
-    """
-    Linux'ta cronie/cron servisinin çalıştığından emin ol.
-    Çalışmıyorsa başlatmayı dener, kullanıcıyı bilgilendirir.
-    """
     if platform.system() != "Linux":
         return
-
     for svc in ("cronie", "cron", "crond"):
         result = subprocess.run(
             ["systemctl", "is-active", svc],
             capture_output=True, text=True,
         )
         if result.returncode == 0:
-            return  # Zaten çalışıyor
-
-        # Servis var mı?
+            return
         check = subprocess.run(
             ["systemctl", "list-unit-files", f"{svc}.service"],
             capture_output=True, text=True,
         )
         if svc not in check.stdout:
             continue
-
-        # Var ama çalışmıyor — başlat
         print(f"\n  ⚠️  {svc} servisi çalışmıyor. Başlatılıyor...")
-        start = subprocess.run(
-            ["sudo", "systemctl", "start", svc],
-            capture_output=True,
-        )
-        enable = subprocess.run(
-            ["sudo", "systemctl", "enable", svc],
-            capture_output=True,
-        )
+        start = subprocess.run(["sudo", "systemctl", "start", svc], capture_output=True)
+        subprocess.run(["sudo", "systemctl", "enable", svc], capture_output=True)
         if start.returncode == 0:
-            print(f"  ✅ {svc} başlatıldı ve otomatik başlangıca eklendi.")
+            print(f"  ✅ {svc} başlatıldı.")
         else:
-            print(f"  ❌ {svc} başlatılamadı. Manuel çalıştır:")
-            print(f"     sudo systemctl start {svc}")
-            print(f"     sudo systemctl enable {svc}")
+            print(f"  ❌ Manuel: sudo systemctl start {svc}")
         return
-
-    # Hiç cron servisi bulunamadı
     print("\n  ⚠️  Cron servisi bulunamadı.")
     print("     Arch/Manjaro : sudo pacman -S cronie && sudo systemctl enable --now cronie")
-    print("     Ubuntu/Debian: sudo apt install cron")
-    print("     Fedora       : sudo dnf install cronie && sudo systemctl enable --now cronie")
 
 
-
+# ─── Linux: crontab ──────────────────────────────────────────
 def _cron_entry(hour: int, minute: int, wrapper: Path) -> str:
-    return f"{minute} {hour} * * * {wrapper}\n"
+    return f"{minute} {hour} * * * {wrapper} {_CRON_TAG}\n"
+
+
+def _reboot_entry(wrapper: Path) -> str:
+    return f"@reboot sleep 60 && {wrapper} {_REBOOT_TAG}\n"
 
 
 def _get_crontab() -> str:
-    result = subprocess.run(
-        ["crontab", "-l"],
-        capture_output=True, text=True
-    )
+    result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
     return result.stdout if result.returncode == 0 else ""
 
 
 def cron_add(hour: int, minute: int, courses: list[str] | None = None) -> bool:
     wrapper = _write_wrapper(courses)
-    entry   = _cron_entry(hour, minute, wrapper)
+
     current = _get_crontab()
 
-    # Eski ALMS satırlarını temizle (wrapper path veya eski alms.py yolu)
+    # Sadece ALMS etiketli satırları sil — kullanıcının @reboot'unu koru
     lines = [
         l for l in current.splitlines(keepends=True)
-        if "alms" not in l.lower()
+        if _CRON_TAG not in l and _REBOOT_TAG not in l
     ]
-    lines.append(entry)
-    new_cron = "".join(lines)
 
+    # Saatli + @reboot ekle
+    lines.append(_cron_entry(hour, minute, wrapper))
+    lines.append(_reboot_entry(wrapper))
+
+    new_cron = "".join(lines)
     with tempfile.NamedTemporaryFile("w", suffix=".cron", delete=False) as f:
         f.write(new_cron)
         tmp = f.name
@@ -178,7 +209,7 @@ def cron_remove() -> bool:
     current = _get_crontab()
     lines = [
         l for l in current.splitlines(keepends=True)
-        if "alms" not in l.lower()
+        if _CRON_TAG not in l and _REBOOT_TAG not in l
     ]
     new_cron = "".join(lines)
     with tempfile.NamedTemporaryFile("w", suffix=".cron", delete=False) as f:
@@ -186,18 +217,15 @@ def cron_remove() -> bool:
         tmp = f.name
     result = subprocess.run(["crontab", tmp])
     os.unlink(tmp)
-
-    # Wrapper script de sil
     wp = _wrapper_script_path()
     if wp.exists():
         wp.unlink()
-
     return result.returncode == 0
 
 
 def cron_status() -> str | None:
     for line in _get_crontab().splitlines():
-        if "alms" in line.lower():
+        if _CRON_TAG in line:
             return line.strip()
     return None
 
@@ -226,7 +254,7 @@ PLIST_TEMPLATE = """\
     <integer>{minute}</integer>
   </dict>
   <key>RunAtLoad</key>
-  <false/>
+  <true/>
   <key>StandardOutPath</key>
   <string>{log}</string>
   <key>StandardErrorPath</key>
@@ -246,8 +274,7 @@ def launchd_add(hour: int, minute: int, log_path: str,
     plist = PLIST_TEMPLATE.format(
         python=PYTHON, script=SCRIPT,
         hour=hour, minute=minute,
-        log=log_path,
-        course_args=course_args,
+        log=log_path, course_args=course_args,
     )
     PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     PLIST_PATH.write_text(plist)
@@ -270,8 +297,7 @@ def launchd_status() -> str | None:
 
 
 # ─── Windows: schtasks ───────────────────────────────────────
-def schtasks_add(hour: int, minute: int,
-                 courses: list[str] | None = None) -> bool:
+def schtasks_add(hour: int, minute: int, courses: list[str] | None = None) -> bool:
     course_args = f" --courses {','.join(courses)}" if courses else ""
     cmd = [
         "schtasks", "/Create", "/F",
