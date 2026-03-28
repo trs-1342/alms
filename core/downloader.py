@@ -55,6 +55,21 @@ def _content_hash(name: str, size: int) -> str:
 
 
 # ─── Duplicate tespiti ────────────────────────────────────────
+def sync_manifest_with_disk() -> int:
+    """
+    Manifest'teki silinen dosyaları temizler.
+    Döner: kaç kayıt kaldırıldı.
+    """
+    manifest = load_manifest()
+    to_remove = [h for h, path in manifest.items() if not Path(path).exists()]
+    for h in to_remove:
+        del manifest[h]
+    if to_remove:
+        save_manifest(manifest)
+        log.info("Manifest temizlendi — %d kayıt kaldırıldı.", len(to_remove))
+    return len(to_remove)
+
+
 def deduplicate(files: list[dict]) -> tuple[list[dict], int]:
     """
     Aynı dosya adı + boyuta sahip tekrarları temizler.
@@ -323,10 +338,13 @@ def download_all(
                     on_progress(done, total, f, result)
 
     except KeyboardInterrupt:
-        # Devam eden indirmeleri iptal et, manifest'i kaydet
         log.warning("İndirme kullanıcı tarafından durduruldu (%d/%d tamamlandı).",
                     done, total)
         save_manifest(manifest)
+    finally:
+        # Python 3.14'te ThreadPoolExecutor kapanırken çıkan uyarıyı sessizleştir
+        import warnings
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     return {
         "ok": ok, "skipped": skipped,

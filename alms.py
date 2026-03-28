@@ -36,12 +36,11 @@ _lock_fd = None
 
 
 def _acquire_lock() -> bool:
-    """Döner: True = kilit alındı, False = başka instance çalışıyor."""
+    """Döner: True = kilit alındı, False = başka instance hâlâ çalışıyor."""
     global _lock_fd
     ensure_secure_dir(CONFIG_DIR)
 
     if platform.system() == "Windows":
-        # Windows: dosya varlığı kontrolü (basit)
         if LOCK_FILE.exists():
             try:
                 pid = int(LOCK_FILE.read_text().strip())
@@ -49,13 +48,24 @@ def _acquire_lock() -> bool:
                 h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
                 if h:
                     ctypes.windll.kernel32.CloseHandle(h)
-                    return False  # hâlâ çalışıyor
+                    return False
             except Exception:
                 pass
         LOCK_FILE.write_text(str(os.getpid()))
         return True
     else:
         import fcntl
+
+        # Stale lock kontrolü: dosya varsa PID hâlâ çalışıyor mu?
+        if LOCK_FILE.exists():
+            try:
+                old_pid = int(LOCK_FILE.read_text().strip())
+                # /proc/<pid> yoksa process ölmüş, lock'u temizle
+                if not Path(f"/proc/{old_pid}").exists():
+                    LOCK_FILE.unlink(missing_ok=True)
+            except Exception:
+                LOCK_FILE.unlink(missing_ok=True)
+
         try:
             _lock_fd = open(LOCK_FILE, "w")
             fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -94,15 +104,23 @@ class _SanitizingFilter(logging.Filter):
 
 
 def setup_logging(verbose: bool = False, quiet: bool = False):
+    from logging.handlers import TimedRotatingFileHandler
     ensure_secure_dir(CONFIG_DIR)
     level = logging.DEBUG if verbose else (logging.WARNING if quiet else logging.INFO)
+    fmt   = "%(asctime)s [%(levelname)s] %(message)s"
 
-    fmt = "%(asctime)s [%(levelname)s] %(message)s"
-    handlers = [
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-    ]
+    # Günlük döndür, 7 gün sakla
+    file_handler = TimedRotatingFileHandler(
+        LOG_FILE, when="midnight", interval=1,
+        backupCount=7, encoding="utf-8", utc=True,
+    )
+    file_handler.setFormatter(logging.Formatter(fmt))
+
+    handlers: list[logging.Handler] = [file_handler]
     if not quiet:
-        handlers.append(logging.StreamHandler(sys.stdout))
+        stream = logging.StreamHandler(sys.stdout)
+        stream.setFormatter(logging.Formatter(fmt))
+        handlers.append(stream)
 
     logging.basicConfig(level=level, format=fmt, handlers=handlers)
 
@@ -111,7 +129,6 @@ def setup_logging(verbose: bool = False, quiet: bool = False):
     for h in logging.root.handlers:
         h.addFilter(sanitizer)
 
-    # Requests kütüphanesinin verbose loglarını kapat
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests").setLevel(logging.WARNING)
 
@@ -137,10 +154,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="sync/download için dosya tipi filtresi")
     p.add_argument("--course", metavar="KOD",
                    help="Ders kodu veya isim filtresi (örn. FIZ108)")
+    p.add_argument("--courses", metavar="KOD1,KOD2",
+                   help="Virgülle ayrılmış ders kodları (otomasyon için)")
     p.add_argument("--week", type=int, metavar="N",
                    help="Sadece N. haftayı indir")
     p.add_argument("--all", action="store_true",
                    help="sync: daha önce indirilenler dahil tümünü indir")
+    p.add_argument("--force", action="store_true",
+                   help="Dosya diskde olsa bile yeniden indir (--all ile benzer)")
     return p
 
 
@@ -158,21 +179,70 @@ def cmd_menu(token: str, username: str):
 def cmd_sync(token: str, args):
     log = logging.getLogger(__name__)
     from core.api import get_active_courses
-    from core.downloader import collect_files, download_all
+    from core.downloader import collect_files, download_all, sync_manifest_with_disk, deduplicate
+    from utils.logger import log_action
 
     quiet = getattr(args, "quiet", False)
-    log.info("Sync başladı...")
-    courses = get_active_courses(token)
-    files   = collect_files(
-        token, courses,
-        file_type=getattr(args, "format", None),
-        course_filter=getattr(args, "course", None),
-        week_filter=getattr(args, "week", None),
-        dedup=True,
-    )
+    force = getattr(args, "force", False) or getattr(args, "all", False)
+
+    # Ders filtresi: --courses > --course > config auto_sync_courses
+    course_filter = None
+    courses_arg   = getattr(args, "courses", None)   # "FIZ108,YZM102"
+    course_arg    = getattr(args, "course",  None)   # "FIZ108"
+
+    if courses_arg:
+        course_filter = [c.strip() for c in courses_arg.split(",") if c.strip()]
+    elif course_arg:
+        course_filter = [course_arg]
+    else:
+        from core.config import get as cfg_get
+        saved = cfg_get("auto_sync_courses") or []
+        if saved:
+            course_filter = saved
+
+    # Ağ bağlantısı kontrolü
+    from utils.network import check_alms_reachable
+    reachable, net_msg = check_alms_reachable()
+    if not reachable:
+        log.error("ALMS'e erişilemiyor: %s", net_msg)
+        if not quiet:
+            print(f"\n  ❌ Bağlantı hatası: {net_msg}")
+        return
+
+    # Manifest temizle
+    removed = sync_manifest_with_disk()
+    if removed:
+        log.info("🗑  Manifest temizlendi — %d kayıt kaldırıldı.", removed)
+
+    log.info("Sync başladı...%s",
+             f" (dersler: {', '.join(course_filter)})" if course_filter else "")
+    log_action("sync_start", {"force": force, "courses": course_filter or []})
+
+    all_courses = get_active_courses(token)
+
+    if course_filter:
+        raw = []
+        for code in course_filter:
+            raw += collect_files(
+                token, all_courses,
+                file_type=getattr(args, "format", None),
+                course_filter=code,
+                week_filter=getattr(args, "week", None),
+                dedup=False,
+            )
+        files, _ = deduplicate(raw)
+    else:
+        files = collect_files(
+            token, all_courses,
+            file_type=getattr(args, "format", None),
+            course_filter=None,
+            week_filter=getattr(args, "week", None),
+            dedup=True,
+        )
 
     if not files:
         log.info("Yeni dosya bulunamadı.")
+        log_action("sync_end", {"found": 0})
         return
 
     log.info("📦 %d dosya indirilecek...", len(files))
@@ -186,15 +256,21 @@ def cmd_sync(token: str, args):
         print(f"\r  [{pct:3d}%] {done}/{total} {status} {f['file_name'][:45]:<45}",
               end="", flush=True)
 
-    result = download_all(token, files, only_new=not getattr(args, "all", False),
-                          on_progress=on_progress)
+    result = download_all(token, files, only_new=not force, on_progress=on_progress)
 
     if not quiet:
-        print()  # ilerleme satırını kapat
+        print()
+
+    log_action("sync_end", {
+        "found":    len(files),
+        "ok":       result["ok"],
+        "skipped":  result["skipped"],
+        "failed":   result["failed"],
+        "cancelled": result.get("cancelled", False),
+    })
 
     if result.get("cancelled"):
-        log.warning("Sync iptal edildi — %d indirildi, %d kaldı.",
-                    result["ok"], len(files) - result["ok"] - result["skipped"])
+        log.warning("Sync iptal edildi — %d indirildi.", result["ok"])
     else:
         log.info("Sync tamamlandı — %d indirildi, %d atlandı, %d başarısız",
                  result["ok"], result["skipped"], result["failed"])

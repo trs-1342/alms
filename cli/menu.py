@@ -209,87 +209,142 @@ def _group_by_course(files):
 def file_selector(files):
     """
     Ders bazlı gruplu dosya seçici.
+    F tuşu ile kelime filtresi, infinite scroll, grup toggle.
     Döner: seçilen dosyaların listesi.
     """
     if not files:
         return []
 
-    groups   = _group_by_course(files)
-    selected = {id(f): False for f in files}
-    # Flat sıralı dosya listesi (grup sırasına göre)
-    ordered  = [f for gfiles in groups.values() for f in gfiles]
-    cursor   = 0   # ordered içinde dosya indeksi
-    PAGE     = 15  # görünür dosya satırı sayısı
+    groups      = _group_by_course(files)
+    selected    = {id(f): False for f in files}
+    all_ordered = [f for gfiles in groups.values() for f in gfiles]
+    filt        = ""      # aktif filtre metni
+    cursor      = 0
+    PAGE        = 15
+    filter_mode = False   # F tuşuna basıldığında True
 
-    def _render():
+    def _filtered():
+        if not filt:
+            return all_ordered
+        kw = filt.lower()
+        return [
+            f for f in all_ordered
+            if kw in f["file_name"].lower()
+            or kw in f["course_code"].lower()
+        ]
+
+    def _render(ordered):
         clear()
         print(cyan("╔" + "═" * 54 + "╗"))
-        print(cyan("║") + bold(f"  {'Dosya Seç':<52}") + cyan("║"))
+        title = f"Dosya Seç  {yellow('/ ' + filt) if filt else ''}"
+        print(cyan("║") + bold(f"  {title:<52}") + cyan("║"))
         print(cyan("╚" + "═" * 54 + "╝"))
-        print(f"  {dim(_t('select_hint'))}\n")
 
-        # Sayfalama: cursor etrafında PAGE kadar dosya göster
-        start = max(0, cursor - PAGE // 2)
-        end   = min(len(ordered), start + PAGE)
-        if end - start < PAGE:
-            start = max(0, end - PAGE)
+        hint_items = [
+            ("↑↓", "hareket"), ("SPACE", "seç"), ("G", "grup"),
+            ("A", "hepsi"), ("N", "temizle"), ("F", "filtrele"),
+            ("ENTER", "onayla"), ("Q", "iptal"),
+        ]
+        hint = "  ".join(f"{bold(k)} {dim(v)}" for k, v in hint_items)
+        print(f"  {hint}")
 
-        prev_code = None
-        for i in range(start, end):
-            f    = ordered[i]
-            code = f["course_code"] or f["course_name"][:12]
+        if filter_mode:
+            print(f"\n  {yellow('Filtre:')} {filt}{cyan('█')}")
+        print()
 
-            # Grup başlığı — sadece grup değişince göster
-            if code != prev_code:
-                g_files = groups[code]
-                g_sel   = sum(1 for gf in g_files if selected[id(gf)])
-                arrow_h = cyan("▶") if i == cursor else " "
-                print(f"\n  {arrow_h} {bold(cyan(code))}  {dim(f'{g_sel}/{len(g_files)}')}")
-                prev_code = code
+        if not ordered:
+            print(f"  {dim('Eşleşen dosya yok.')}")
+        else:
+            start = max(0, cursor - PAGE // 2)
+            end   = min(len(ordered), start + PAGE)
+            if end - start < PAGE:
+                start = max(0, end - PAGE)
 
-            mb    = f"{f['size_bytes']/1_048_576:.1f} MB"
-            chk   = green("●") if selected[id(f)] else dim("○")
-            name  = f["file_name"][:40]
-            row   = f"  {chk} W{f['week']:02d}  {name:<40} {mb:>7}"
-            arrow = bold(cyan("  ▶ ")) if i == cursor else "    "
-            line  = bold(row) if i == cursor else (green(row) if selected[id(f)] else row)
-            print(f"{arrow}{line}")
+            prev_code = None
+            for i in range(start, end):
+                f    = ordered[i]
+                code = f["course_code"] or f["course_name"][:12]
+
+                if code != prev_code:
+                    g_all = groups.get(code, [])
+                    g_sel = sum(1 for gf in g_all if selected[id(gf)])
+                    arrow_h = cyan("▶") if i == cursor else " "
+                    print(f"\n  {arrow_h} {bold(cyan(code))}  {dim(f'{g_sel}/{len(g_all)}')}")
+                    prev_code = code
+
+                mb    = f"{f['size_bytes']/1_048_576:.1f} MB"
+                chk   = green("●") if selected[id(f)] else dim("○")
+                name  = f["file_name"][:40]
+                row   = f"  {chk} W{f['week']:02d}  {name:<40} {mb:>7}"
+                arrow = bold(cyan("  ▶ ")) if i == cursor else "    "
+                line  = bold(row) if i == cursor else (green(row) if selected[id(f)] else row)
+                print(f"{arrow}{line}")
 
         total_sel = sum(1 for v in selected.values() if v)
-        sel_mb    = sum(f["size_bytes"] for f in ordered if selected[id(f)]) / 1_048_576
+        sel_mb    = sum(f["size_bytes"] for f in all_ordered if selected[id(f)]) / 1_048_576
         sel_label = _t("selected")
-        print(f"\n  {yellow(f'{total_sel} {sel_label}  (~{sel_mb:.1f} MB)')}")
+        count_str = f"{len(_filtered())}/{len(all_ordered)}" if filt else str(len(all_ordered))
+        print(f"\n  {yellow(f'{total_sel} {sel_label}  (~{sel_mb:.1f} MB)')}  {dim(count_str + ' dosya')}")
 
-    def _toggle_group(f):
-        """f'nin ait olduğu grubun tamamını seç/kaldır."""
+    def _toggle_group(f, ordered):
         code   = f["course_code"] or f["course_name"][:12]
-        gfiles = groups[code]
-        all_on = all(selected[id(gf)] for gf in gfiles)
-        for gf in gfiles:
+        gfiles = groups.get(code, [])
+        # Sadece filtrelenmiş listedeki dosyaları toggle et
+        visible = [gf for gf in gfiles if gf in ordered]
+        all_on  = all(selected[id(gf)] for gf in visible)
+        for gf in visible:
             selected[id(gf)] = not all_on
 
     while True:
-        _render()
+        ordered = _filtered()
+        safe_cursor = min(cursor, max(0, len(ordered) - 1))
+        if safe_cursor != cursor:
+            cursor = safe_cursor
+
+        _render(ordered)
+
+        if filter_mode:
+            # Filtre modunda klavyeden karakter oku
+            key = _getch()
+            if key in ("\r", "\n", "\x1b"):
+                filter_mode = False
+            elif key in ("\x7f", "\x08"):   # Backspace
+                filt = filt[:-1]
+            elif key and len(key) == 1 and key.isprintable():
+                filt += key
+            cursor = 0
+            continue
+
         key = _getch()
+        if not ordered:
+            if key in ("q", "Q", "\x03", "\x1b"):
+                return []
+            elif key in ("f", "F"):
+                filter_mode = True
+                filt = ""
+            continue
 
         if key == "UP":
-            cursor = max(0, cursor - 1)
+            cursor = (cursor - 1) % len(ordered)
         elif key == "DOWN":
-            cursor = min(len(ordered) - 1, cursor + 1)
+            cursor = (cursor + 1) % len(ordered)
         elif key == " ":
             f = ordered[cursor]
             selected[id(f)] = not selected[id(f)]
         elif key in ("g", "G"):
-            # G tuşu: tüm grubu seç/kaldır
-            _toggle_group(ordered[cursor])
+            _toggle_group(ordered[cursor], ordered)
         elif key in ("a", "A"):
             for f in ordered:
                 selected[id(f)] = True
         elif key in ("n", "N"):
             for f in ordered:
                 selected[id(f)] = False
+        elif key in ("f", "F"):
+            filter_mode = True
+            filt = ""
+            cursor = 0
         elif key in ("\r", "\n"):
-            return [f for f in ordered if selected[id(f)]]
+            return [f for f in all_ordered if selected[id(f)]]
         elif key in ("q", "Q", "\x03", "\x1b"):
             return []
 
@@ -320,9 +375,11 @@ def screen_list_courses(token):
 # ─── İndirme ──────────────────────────────────────────────────
 def screen_download(token):
     from core.api import get_active_courses
-    from core.downloader import collect_files, download_all, deduplicate
+    from core.downloader import collect_files, download_all, deduplicate, sync_manifest_with_disk
+    from utils.logger import log_action
 
     header(_t("opt_download"))
+    sync_manifest_with_disk()
 
     print(f"  {bold('Dosya tipi')}:")
     ft_idx   = menu([_t("all_types"), _t("pdf_only"), _t("video_only")])
@@ -377,8 +434,23 @@ def screen_download(token):
         if result["ok"] and not result.get("skipped"):
             completed.append((f, result.get("path", "")))
 
+    log_action("download_start", {"selected": len(chosen)})
     result = download_all(token, chosen, only_new=True, on_progress=on_progress)
+    log_action("download_end", {
+        "ok": result["ok"], "skipped": result["skipped"], "failed": result["failed"],
+    })
     print()
+
+    # Masaüstü bildirimi
+    if result["ok"] > 0:
+        from utils.notify import send as notify
+        from core.config import get as cfg_get
+        if cfg_get("notify_desktop"):
+            notify(
+                "ALMS İndirici",
+                f"{result['ok']} dosya indirildi"
+                + (f", {result['failed']} başarısız" if result["failed"] else ""),
+            )
     print(f"\n  {green('✅')} {result['ok']} indirildi  "
           f"{dim('⬛')} {result['skipped']} atlandı  "
           f"{red('❌')} {result['failed']} başarısız")
@@ -463,6 +535,7 @@ def screen_status(token, username):
     from core.auth import get_active_session
     from core.config import get_download_dir
     from utils.scheduler import get_schedule_status
+    from utils.network import check_alms_reachable
     from utils.paths import CONFIG_DIR, MANIFEST_FILE
     import json
 
@@ -475,10 +548,15 @@ def screen_status(token, username):
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
         mins = int((exp - now).total_seconds() / 60)
+        token_str = (
+            green(f"Geçerli ({mins} dk kaldı)") if mins > 30
+            else yellow(f"⚠️  Süresi dolmak üzere ({mins} dk kaldı)")
+            if mins > 0 else red("Süresi dolmuş")
+        )
         print(f"  👤  {bold('Kullanıcı')}  : {green(username)}")
-        print(f"  🔑  {bold('Token')}     : {green(f'Geçerli ({mins} dk kaldı)')}")
+        print(f"  🔑  {bold('Token')}     : {token_str}")
     else:
-        print(f"  🔑  {bold('Token')}     : {red('Süresi dolmuş')}")
+        print(f"  🔑  {bold('Token')}     : {red('Süresi dolmuş — alms sync çalıştırınca otomatik yenilenir')}")
 
     dl = get_download_dir()
     print(f"  📁  {bold('İndirme')}    : {dl}")
@@ -492,6 +570,12 @@ def screen_status(token, username):
 
     sched = get_schedule_status()
     print(f"  🕐  {bold('Otomasyon')}  : {yellow(sched) if sched else dim(_t('no_schedule'))}")
+
+    # Ağ durumu
+    reachable, msg = check_alms_reachable()
+    net_str = green("Erişilebilir") if reachable else red(f"Erişilemiyor — {msg}")
+    print(f"  🌐  {bold('ALMS Ağ')}    : {net_str}")
+
     print(f"  💻  {bold('Platform')}   : {platform.system()} {platform.release()}")
     print(f"  📂  {bold('Config')}     : {dim(str(CONFIG_DIR))}")
     print()
@@ -530,33 +614,283 @@ def screen_settings():
 
 
 # ─── Otomasyon ────────────────────────────────────────────────
-def screen_auto():
+def screen_auto(token=None):
     from utils.scheduler import add_schedule, remove_schedule, get_schedule_status
     from utils.paths import LOG_FILE
+    from core import config as cfg
 
     header(_t("auto_title"))
     st = get_schedule_status()
-    print(f"  {bold(_t('auto_status'))}: {yellow(st) if st else dim(_t('no_schedule'))}\n")
+    saved_courses = cfg.get("auto_sync_courses") or []
 
-    idx = menu([_t("auto_on"), _t("auto_off"), _t("back")])
+    print(f"  {bold(_t('auto_status'))}: {yellow(st) if st else dim(_t('no_schedule'))}")
+    if saved_courses:
+        print(f"  {bold('Seçili dersler')}: {cyan(', '.join(saved_courses))}")
+    else:
+        print(f"  {bold('Seçili dersler')}: {dim('Tümü')}")
+    print()
+
+    idx = menu([_t("auto_on"), "Ders Seçimini Güncelle", _t("auto_off"), _t("back")])
+
     if idx == 0:
+        # Saat/dakika sor
         h = ask(_t("auto_hour"), "8")
         m = ask(_t("auto_min"),  "0")
         h = int(h) if h.isdigit() and 0 <= int(h) <= 23 else 8
         m = int(m) if m.isdigit() and 0 <= int(m) <= 59 else 0
-        ok = add_schedule(h, m, str(LOG_FILE))
-        print(f"\n  {green('✅ Etkinleştirildi.') if ok else red('❌ Hata.')}")
+
+        # Ders seçimi sor
+        courses = _pick_auto_courses(token, saved_courses)
+        cfg.set_value("auto_sync_courses", courses)
+        cfg.set_value("auto_sync", True)
+        cfg.set_value("auto_sync_hour", h)
+        cfg.set_value("auto_sync_min", m)
+
+        from utils.scheduler import _ensure_cron_running
+        _ensure_cron_running()
+        ok = add_schedule(h, m, str(LOG_FILE), courses or None)
+        label = f"{h:02d}:{m:02d}"
+        if courses:
+            label += f" — {', '.join(courses)}"
+        else:
+            label += " — tüm dersler"
+        print(f"\n  {green('✅ Etkinleştirildi: ' + label) if ok else red('❌ Hata.')}")
+
     elif idx == 1:
+        # Sadece ders seçimini güncelle, saati koru
+        courses = _pick_auto_courses(token, saved_courses)
+        cfg.set_value("auto_sync_courses", courses)
+        # Mevcut zamanlamayla yeniden kur
+        h = cfg.get("auto_sync_hour") or 8
+        m = cfg.get("auto_sync_min")  or 0
+        add_schedule(h, m, str(LOG_FILE), courses or None)
+        label = ', '.join(courses) if courses else 'tüm dersler'
+        print(f"\n  {green('✅ Ders seçimi güncellendi: ' + label)}")
+
+    elif idx == 2:
         ok = remove_schedule()
+        cfg.set_value("auto_sync", False)
         print(f"\n  {green('✅ Devre dışı.') if ok else red('❌ Hata.')}")
+
+    pause()
+
+
+def _pick_auto_courses(token, current: list[str]) -> list[str]:
+    """
+    Ders seçimi ekranı.
+    Döner: seçilen ders kodları listesi (boş = tümü).
+    """
+    print()
+    print(f"  {bold('Hangi dersler otomatik indirilsin?')}")
+    print(f"  {dim('(Hiçbirini seçmezsen tüm dersler indirilir)')}\n")
+
+    # Ders listesini çek
+    if token is None:
+        # Token yoksa manuel giriş
+        raw = ask("Ders kodları (virgülle ayır, boş = hepsi)", ",".join(current))
+        return [c.strip() for c in raw.split(",") if c.strip()] if raw else []
+
+    try:
+        from core.api import get_active_courses
+        courses = get_active_courses(token)
+    except Exception:
+        raw = ask("Ders kodları (virgülle ayır, boş = hepsi)", ",".join(current))
+        return [c.strip() for c in raw.split(",") if c.strip()] if raw else []
+
+    if not courses:
+        return []
+
+    # Numara seçimi
+    print(f"  {dim('Seçmek için numaraları virgülle gir. Boş bırak = hepsi.')}\n")
+    for i, c in enumerate(courses, 1):
+        code = c.get("courseCode", "?")
+        name = c.get("name", "").strip()[:40]
+        sel  = green("●") if code in current else dim("○")
+        print(f"  {cyan(f'[{i}]')} {sel} {yellow(code):<10} {name}")
+
+    print()
+    raw = ask("Numara(lar) (örn: 1,3,5 — boş = hepsi)", "")
+    if not raw:
+        return []
+
+    selected = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit():
+            idx = int(part) - 1
+            if 0 <= idx < len(courses):
+                code = courses[idx].get("courseCode", "")
+                if code:
+                    selected.append(code)
+    return selected
+
+
+# ─── İstatistikler ────────────────────────────────────────────
+def screen_stats():
+    from utils.paths import MANIFEST_FILE, CONFIG_DIR
+    from core.config import get_download_dir
+    import json
+
+    header("İstatistikler")
+
+    if not MANIFEST_FILE.exists():
+        print(f"  {dim('Henüz hiç dosya indirilmedi.')}")
+        pause()
+        return
+
+    try:
+        mf = json.loads(MANIFEST_FILE.read_text())
+    except Exception:
+        print(f"  {red('Manifest okunamadı.')}")
+        pause()
+        return
+
+    # Ders bazlı gruplama
+    course_stats: dict[str, dict] = {}
+    total_bytes = 0
+    missing     = 0
+
+    for path_str in mf.values():
+        p = __import__("pathlib").Path(path_str)
+        # Klasör yapısı: ALMS/DERS_KODU/Hafta_XX/dosya
+        parts = p.parts
+        try:
+            dl_root  = get_download_dir()
+            rel      = p.relative_to(dl_root)
+            course   = rel.parts[0] if len(rel.parts) > 0 else "?"
+        except ValueError:
+            course = "?"
+
+        size = p.stat().st_size if p.exists() else 0
+        if not p.exists():
+            missing += 1
+
+        if course not in course_stats:
+            course_stats[course] = {"count": 0, "bytes": 0}
+        course_stats[course]["count"] += 1
+        course_stats[course]["bytes"] += size
+        total_bytes += size
+
+    total_mb = total_bytes / 1_048_576
+    print(f"  {bold('Toplam dosya')}  : {cyan(str(len(mf)))}")
+    print(f"  {bold('Toplam boyut')} : {cyan(f'{total_mb:.1f} MB')}")
+    if missing:
+        print(f"  {bold('Eksik (silindi)')}: {yellow(str(missing))}")
+    print()
+
+    # Ders tablosu
+    print(f"  {bold('Ders'):<14} {bold('Dosya'):>6}  {bold('Boyut')}")
+    print("  " + cyan("─" * 36))
+    for course, s in sorted(course_stats.items(), key=lambda x: -x[1]["bytes"]):
+        mb = f"{s['bytes']/1_048_576:.1f} MB"
+        print(f"  {yellow(course):<22} {s['count']:>5}  {mb:>8}")
+
+    # Son sync tarihi
+    activity_log = CONFIG_DIR / "activity.log"
+    if activity_log.exists():
+        try:
+            lines = activity_log.read_text().strip().splitlines()
+            for line in reversed(lines):
+                entry = json.loads(line)
+                if entry.get("action") == "sync_end":
+                    t = entry["time"][:16].replace("T", " ")
+                    d = entry["detail"]
+                    print(f"\n  {bold('Son sync')}  : {dim(t)}  "
+                          f"{green(str(d.get('ok',0)) + ' indirildi')}")
+                    break
+        except Exception:
+            pass
+    print()
+    pause()
+
+
+# ─── Log görüntüleyici ────────────────────────────────────────
+def screen_log():
+    from utils.paths import CONFIG_DIR
+    import json
+
+    header("Aktivite Logu")
+
+    activity_log = CONFIG_DIR / "activity.log"
+    if not activity_log.exists():
+        print(f"  {dim('Log dosyası henüz oluşmadı.')}")
+        pause()
+        return
+
+    try:
+        lines = activity_log.read_text().strip().splitlines()
+    except Exception as e:
+        print(f"  {red(f'Log okunamadı: {e}')}")
+        pause()
+        return
+
+    # Son 30 kaydı göster
+    entries = []
+    for line in lines:
+        try:
+            entries.append(json.loads(line))
+        except Exception:
+            continue
+
+    recent = entries[-30:]
+
+    print(f"  {bold('Zaman'):<22} {bold('Aksiyon'):<18} {bold('Detay')}")
+    print("  " + cyan("─" * 70))
+
+    ACTION_COLORS = {
+        "sync_start":     dim,
+        "sync_end":       green,
+        "download_start": dim,
+        "download_end":   green,
+    }
+
+    for e in reversed(recent):
+        t      = e.get("time", "")[:16].replace("T", " ")
+        action = e.get("action", "")
+        detail = e.get("detail", {})
+
+        # Detay özeti
+        if action == "sync_end":
+            d_str = f"✅{detail.get('ok',0)} ⬛{detail.get('skipped',0)} ❌{detail.get('failed',0)}"
+        elif action == "download_end":
+            d_str = f"✅{detail.get('ok',0)} ⬛{detail.get('skipped',0)} ❌{detail.get('failed',0)}"
+        elif action == "sync_start":
+            d_str = f"force={detail.get('force', False)}"
+        elif action == "download_start":
+            d_str = f"seçilen={detail.get('selected', 0)}"
+        else:
+            d_str = str(detail)[:40]
+
+        color  = ACTION_COLORS.get(action, str)
+        print(f"  {dim(t):<22} {color(action):<27} {dim(d_str)}")
+
+    print(f"\n  {dim(f'Son {len(recent)} kayıt gösteriliyor.')}")
+    print()
     pause()
 
 
 # ─── Ana menü ─────────────────────────────────────────────────
+def _token_warning(token, username):
+    """Token 30 dk'dan az kaldıysa ana menüde uyarı göster."""
+    from core.auth import get_active_session
+    active = get_active_session()
+    if not active:
+        return
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    exp = datetime.fromisoformat(active["expires"])
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    mins = int((exp - now).total_seconds() / 60)
+    if mins <= 30:
+        print(f"  {yellow(f'⚠️  Token {mins} dk sonra sona erecek.')}\n")
+
+
 def run_main_menu(token, username):
     while True:
         header()
         print(f"  {bold('👤')} {green(username)}\n")
+        _token_warning(token, username)
 
         opts = [
             _t("opt_list"),
@@ -565,6 +899,8 @@ def run_main_menu(token, username):
             _t("opt_today"),
             _t("opt_open"),
             _t("opt_status"),
+            "İstatistikler",
+            "Aktivite Logu",
             _t("opt_settings"),
             _t("opt_auto"),
             red(_t("opt_exit")),
@@ -577,18 +913,30 @@ def run_main_menu(token, username):
             screen_download(token)
         elif idx == 2:
             from core.api import get_active_courses
-            from core.downloader import collect_files, download_all
+            from core.downloader import collect_files, download_all, sync_manifest_with_disk
+            from utils.logger import log_action
+            from utils.notify import send as notify
+            from core.config import get as cfg_get
             header(_t("opt_sync"))
+            sync_manifest_with_disk()
             print(f"  {dim('Taranıyor...')}")
+            log_action("sync_start", {"force": False})
             courses = get_active_courses(token)
             files   = collect_files(token, courses, dedup=True)
             if not files:
                 print(f"  {dim('Yeni dosya yok.')}")
+                log_action("sync_end", {"found": 0})
             else:
                 result = download_all(token, files, only_new=True)
+                log_action("sync_end", {
+                    "found": len(files), "ok": result["ok"],
+                    "skipped": result["skipped"], "failed": result["failed"],
+                })
                 print(f"\n  {green('✅')} {result['ok']} indirildi  "
                       f"{dim('⬛')} {result['skipped']} atlandı  "
                       f"{red('❌')} {result['failed']} başarısız")
+                if result["ok"] > 0 and cfg_get("notify_desktop"):
+                    notify("ALMS Sync", f"{result['ok']} yeni dosya indirildi")
             pause()
         elif idx == 3:
             screen_today(token)
@@ -598,8 +946,12 @@ def run_main_menu(token, username):
         elif idx == 5:
             screen_status(token, username)
         elif idx == 6:
-            screen_settings()
+            screen_stats()
         elif idx == 7:
-            screen_auto()
+            screen_log()
+        elif idx == 8:
+            screen_settings()
+        elif idx == 9:
+            screen_auto(token)
         else:
             break

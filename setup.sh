@@ -7,7 +7,7 @@ PYTHON_MIN="3.10"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
-echo "║  ALMS İndirici — Kurulum                        ║"
+echo "║  ALMS İndirici — Kurulum                         ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 
@@ -88,6 +88,55 @@ if [ -n "$CONFIG_BASE" ]; then
     mkdir -p "$CONFIG_BASE"
     chmod 700 "$CONFIG_BASE"
     echo "  ✅ Config dizini güvenli: $CONFIG_BASE"
+fi
+
+# ── Linux: cron servisi kontrolü ─────────────────────────────
+if [ "$UNAME" = "Linux" ]; then
+    echo ""
+    echo "  Cron servisi kontrol ediliyor..."
+
+    # Hangi cron servisi var?
+    CRON_SERVICE=""
+    for svc in cronie cron crond; do
+        if systemctl list-unit-files --quiet "$svc.service" 2>/dev/null | grep -q "$svc"; then
+            CRON_SERVICE="$svc"
+            break
+        fi
+    done
+
+    if [ -z "$CRON_SERVICE" ]; then
+        echo "  ⚠️  Cron servisi bulunamadı."
+        echo "     Arch/Manjaro : sudo pacman -S cronie"
+        echo "     Ubuntu/Debian: sudo apt install cron"
+        echo "     Fedora/RHEL  : sudo dnf install cronie"
+        echo "     (Otomatik indirme için cron gereklidir)"
+    else
+        # Çalışıyor mu?
+        if systemctl is-active --quiet "$CRON_SERVICE"; then
+            echo "  ✅ $CRON_SERVICE çalışıyor."
+        else
+            echo "  ⚠️  $CRON_SERVICE kurulu ama çalışmıyor. Başlatılıyor..."
+            if sudo systemctl start "$CRON_SERVICE" 2>/dev/null; then
+                echo "  ✅ $CRON_SERVICE başlatıldı."
+            else
+                echo "  ❌ Başlatılamadı. Manuel çalıştır:"
+                echo "     sudo systemctl start $CRON_SERVICE"
+            fi
+        fi
+
+        # Otomatik başlangıç açık mı?
+        if systemctl is-enabled --quiet "$CRON_SERVICE" 2>/dev/null; then
+            echo "  ✅ $CRON_SERVICE otomatik başlangıçta etkin."
+        else
+            echo "  ⚠️  $CRON_SERVICE otomatik başlangıçta değil. Etkinleştiriliyor..."
+            if sudo systemctl enable "$CRON_SERVICE" 2>/dev/null; then
+                echo "  ✅ $CRON_SERVICE otomatik başlangıca eklendi."
+            else
+                echo "  ❌ Etkinleştirilemedi. Manuel çalıştır:"
+                echo "     sudo systemctl enable $CRON_SERVICE"
+            fi
+        fi
+    fi
 fi
 
 echo ""
