@@ -38,6 +38,7 @@ TR = {
     "opt_status":    "Durum",
     "opt_auto":      "Otomatik Çalıştırma",
     "opt_exit":      "Çıkış",
+    "opt_sinav":     "Sınav Takvimi",
     "choose":        "Seçiminiz",
     "back":          "Geri",
     "invalid":       "Geçersiz seçim.",
@@ -78,6 +79,7 @@ EN = {
     "opt_status":    "Status",
     "opt_auto":      "Auto Run",
     "opt_exit":      "Exit",
+    "opt_sinav":     "Exam Schedule",
     "choose":        "Your choice",
     "back":          "Back",
     "invalid":       "Invalid choice.",
@@ -133,7 +135,7 @@ _QUOTES = [
     "her kod kusurludur, çünkü insanın kendisi böyledir.\n-trs"
 ]
 
-_last_quote = [None]  # Ana menüde tekrar basılmasın diye
+_last_quote = [None]
 
 
 def _random_quote() -> str:
@@ -158,7 +160,6 @@ def header(title="", show_quote=False):
 
     if show_quote:
         q = _random_quote()
-        # Özlü söz — max 52 karakter genişliğine sığdır
         words  = q.split()
         lines  = []
         line   = ""
@@ -174,11 +175,6 @@ def header(title="", show_quote=False):
         print()
         for l in lines:
             print(f"  {dim(l)}")
-
-        # trs sözü — kırmızı, her zaman göster
-        # print()
-        # print(f"  {red('her kod kusurludur, çünkü insanın kendisi böyledir.')}")
-        # print(f"  {red('                                          —trs')}")
 
     print()
 
@@ -225,7 +221,7 @@ def pause():
         pass
 
 
-# ─── Ok tuşu + Space seçici (ders gruplu) ────────────────────
+# ─── Ok tuşu + Space seçici ───────────────────────────────────
 def _getch():
     if platform.system() == "Windows":
         import msvcrt
@@ -252,7 +248,6 @@ def _getch():
 
 
 def _group_by_course(files):
-    """Dosyaları ders bazlı grupla: {course_code: [files]}"""
     groups = {}
     for f in files:
         key = f["course_code"] or f["course_name"][:12]
@@ -261,12 +256,6 @@ def _group_by_course(files):
 
 
 def file_selector(files):
-    """
-    Ders bazlı gruplu dosya seçici.
-    F tuşu ile kelime filtresi, infinite scroll, grup toggle.
-    İndirilmiş dosyalar farklı renkte gösterilir.
-    Döner: seçilen dosyaların listesi.
-    """
     if not files:
         return []
 
@@ -274,7 +263,6 @@ def file_selector(files):
 
     groups      = _group_by_course(files)
     selected    = {id(f): False for f in files}
-    # İndirilmiş dosyaları başta hesapla (disk IO, bir kez)
     downloaded  = {id(f): is_downloaded(f) for f in files}
     all_ordered = [f for gfiles in groups.values() for f in gfiles]
     filt        = ""
@@ -337,17 +325,14 @@ def file_selector(files):
                 is_sel  = selected[id(f)]
                 is_cur  = i == cursor
 
-                # Seçim ikonu
                 if is_sel:
                     chk = green("●")
                 elif is_dl:
-                    chk = yellow("◉")   # indirilmiş ama seçilmemiş
+                    chk = yellow("◉")
                 else:
                     chk = dim("○")
 
-                # İndirilmiş işareti
                 dl_tag = dim(" ✓") if is_dl else "  "
-
                 name = f["file_name"][:38]
                 row  = f"  {chk} W{f['week']:02d}  {name:<38}{dl_tag} {mb:>7}"
                 arrow = bold(cyan("  ▶ ")) if is_cur else "    "
@@ -357,7 +342,7 @@ def file_selector(files):
                 elif is_sel:
                     line = green(row)
                 elif is_dl:
-                    line = yellow(row)   # indirilmiş = sarı
+                    line = yellow(row)
                 else:
                     line = row
 
@@ -374,7 +359,6 @@ def file_selector(files):
     def _toggle_group(f, ordered):
         code   = f["course_code"] or f["course_name"][:12]
         gfiles = groups.get(code, [])
-        # Sadece filtrelenmiş listedeki dosyaları toggle et
         visible = [gf for gf in gfiles if gf in ordered]
         all_on  = all(selected[id(gf)] for gf in visible)
         for gf in visible:
@@ -391,15 +375,12 @@ def file_selector(files):
 
         if filter_mode:
             if key in ("\r", "\n"):
-                # Enter → filtreden çık, listeye dön (filtre aktif kalır)
                 filter_mode = False
             elif key in ("\x1b",):
-                # ESC → filtreyi tamamen temizle ve çık
                 filter_mode = False
                 filt = ""
                 cursor = 0
             elif key in ("f", "F"):
-                # F tekrar → filtreden çık
                 filter_mode = False
             elif key == "UP":
                 filter_mode = False
@@ -407,10 +388,10 @@ def file_selector(files):
             elif key == "DOWN":
                 filter_mode = False
                 cursor = (cursor + 1) % max(1, len(ordered))
-            elif key in ("\x7f", "\x08"):   # Backspace
+            elif key in ("\x7f", "\x08"):
                 filt = filt[:-1]
                 cursor = 0
-            elif key == "\x03":             # Ctrl+C
+            elif key == "\x03":
                 return []
             elif key and len(key) == 1 and key.isprintable():
                 filt += key
@@ -442,7 +423,6 @@ def file_selector(files):
                 selected[id(f)] = False
         elif key in ("f", "F"):
             filter_mode = True
-            # Mevcut filtreyi koru — sıfırlama
             cursor = 0
         elif key in ("\r", "\n"):
             return [f for f in all_ordered if selected[id(f)]]
@@ -474,6 +454,33 @@ def screen_list_courses(token):
     pause()
 
 
+# ─── Sınav Takvimi ────────────────────────────────────────────
+def screen_sinav():
+    """OBİS sınav takvimini menüden göster."""
+    header(_t("opt_sinav"))
+
+    try:
+        from core.obis import get_session, get_sinav_tarihleri, print_sinav_tarihleri
+    except ImportError:
+        print(f"  {red('OBİS modülü bulunamadı.')}")
+        pause()
+        return
+
+    from utils.spinner import Spinner
+    with Spinner("OBİS bağlanıyor..."):
+        session = get_session()
+
+    if not session:
+        pause()
+        return
+
+    with Spinner("Sınav tarihleri alınıyor..."):
+        sinavlar = get_sinav_tarihleri(session)
+
+    print_sinav_tarihleri(sinavlar)
+    pause()
+
+
 # ─── İndirme ──────────────────────────────────────────────────
 def screen_download(token):
     from core.api import get_active_courses
@@ -484,7 +491,6 @@ def screen_download(token):
     header(_t("opt_download"))
     sync_manifest_with_disk()
 
-    # Önce ders listesini çek
     with Spinner("Dersler alınıyor..."):
         courses = get_active_courses(token)
 
@@ -493,7 +499,6 @@ def screen_download(token):
         pause()
         return
 
-    # ── C özelliği: Ders seçimi + her ders için dosya türü ────
     print(f"  {bold('Hangi dersleri tarayalım?')}")
     print(f"  {dim('(Boş bırak = hepsi)')}\n")
     for i, c in enumerate(courses, 1):
@@ -514,7 +519,6 @@ def screen_download(token):
     if not selected_courses:
         selected_courses = courses
 
-    # Her seçili ders için dosya türü sor (birden fazla ders varsa genel sor)
     if len(selected_courses) == 1:
         c = selected_courses[0]
         code = c.get("courseCode", c.get("name", "")[:10])
@@ -532,7 +536,6 @@ def screen_download(token):
         ])
         ft_map = {0: None, 1: "pdf", 2: "video"}
         if ft_idx == 3:
-            # Her ders için ayrı sor
             course_filters = {}
             for c in selected_courses:
                 code = c.get("courseCode", c.get("name", "")[:10])
@@ -547,7 +550,6 @@ def screen_download(token):
     week_raw = ask(_t("filter_week"))
     week_f   = int(week_raw) if week_raw.isdigit() else None
 
-    # Dosyaları topla
     with Spinner("Dosyalar taranıyor..."):
         all_files = []
         for c in selected_courses:
@@ -578,7 +580,6 @@ def screen_download(token):
         pause()
         return
 
-    # İndirilmiş dosya uyarısı
     from core.downloader import is_downloaded
     already = [f for f in chosen if is_downloaded(f)]
     force   = False
@@ -617,7 +618,6 @@ def screen_download(token):
     })
     print()
 
-    # Masaüstü bildirimi
     if result["ok"] > 0:
         from utils.notify import send as notify
         from core.config import get as cfg_get
@@ -644,7 +644,6 @@ def screen_download(token):
         for ff in result["failed_files"]:
             print(f"    {dim('•')} {ff['file']} — {red(ff['error'][:60])}")
 
-    # İndirme klasörünü aç?
     if result["ok"] > 0:
         from core.config import get as cfg_get
         if cfg_get("open_after_download"):
@@ -702,7 +701,6 @@ def cmd_open():
     elif system == "Darwin":
         subprocess.run(["open", str(dl)])
     else:
-        # Linux: xdg-open, nautilus, thunar, dolphin — ne varsa dene
         for cmd in ["xdg-open", "nautilus", "thunar", "dolphin", "nemo"]:
             try:
                 subprocess.Popen([cmd, str(dl)],
@@ -740,7 +738,7 @@ def screen_status(token, username):
         print(f"  👤  {bold('Kullanıcı')}  : {green(username)}")
         print(f"  🔑  {bold('Token')}     : {token_str}")
     else:
-        print(f"  🔑  {bold('Token')}     : {red('Süresi dolmuş — alms sync çalıştırınca otomatik yenilenir')}")
+        print(f"  🔑  {bold('Token')}     : {red('Süresi dolmuş')}")
 
     dl = get_download_dir()
     print(f"  📁  {bold('İndirme')}    : {dl}")
@@ -755,10 +753,22 @@ def screen_status(token, username):
     sched = get_schedule_status()
     print(f"  🕐  {bold('Otomasyon')}  : {yellow(sched) if sched else dim(_t('no_schedule'))}")
 
-    # Ağ durumu
     reachable, msg = check_alms_reachable()
     net_str = green("Erişilebilir") if reachable else red(f"Erişilemiyor — {msg}")
     print(f"  🌐  {bold('ALMS Ağ')}    : {net_str}")
+
+    # OBİS oturum durumu
+    try:
+        from core.obis import load_session, _test_session
+        obis_cookie = load_session()
+        if obis_cookie:
+            obis_ok = _test_session(obis_cookie)
+            obis_str = green("Geçerli") if obis_ok else yellow("Sona ermiş")
+        else:
+            obis_str = dim("Kurulmamış  →  alms obis --setup")
+        print(f"  🎓  {bold('OBİS')}       : {obis_str}")
+    except Exception:
+        pass
 
     print(f"  💻  {bold('Platform')}   : {platform.system()} {platform.release()}")
     print(f"  📂  {bold('Config')}     : {dim(str(CONFIG_DIR))}")
@@ -825,13 +835,11 @@ def screen_auto(token=None):
     idx = menu([_t("auto_on"), "Ders Seçimini Güncelle", _t("auto_off"), _t("back")])
 
     if idx == 0:
-        # Saat/dakika sor
         h = ask(_t("auto_hour"), "8")
         m = ask(_t("auto_min"),  "0")
         h = int(h) if h.isdigit() and 0 <= int(h) <= 23 else 8
         m = int(m) if m.isdigit() and 0 <= int(m) <= 59 else 0
 
-        # Ders seçimi sor
         courses = _pick_auto_courses(token, saved_courses)
         cfg.set_value("auto_sync_courses", courses)
         cfg.set_value("auto_sync", True)
@@ -849,10 +857,8 @@ def screen_auto(token=None):
         print(f"\n  {green('✅ Etkinleştirildi: ' + label) if ok else red('❌ Hata.')}")
 
     elif idx == 1:
-        # Sadece ders seçimini güncelle, saati koru
         courses = _pick_auto_courses(token, saved_courses)
         cfg.set_value("auto_sync_courses", courses)
-        # Mevcut zamanlamayla yeniden kur
         h = cfg.get("auto_sync_hour") or 8
         m = cfg.get("auto_sync_min")  or 0
         add_schedule(h, m, str(LOG_FILE), courses or None)
@@ -868,17 +874,11 @@ def screen_auto(token=None):
 
 
 def _pick_auto_courses(token, current: list[str]) -> list[str]:
-    """
-    Ders seçimi ekranı.
-    Döner: seçilen ders kodları listesi (boş = tümü).
-    """
     print()
     print(f"  {bold('Hangi dersler otomatik indirilsin?')}")
     print(f"  {dim('(Hiçbirini seçmezsen tüm dersler indirilir)')}\n")
 
-    # Ders listesini çek
     if token is None:
-        # Token yoksa manuel giriş
         raw = ask("Ders kodları (virgülle ayır, boş = hepsi)", ",".join(current))
         return [c.strip() for c in raw.split(",") if c.strip()] if raw else []
 
@@ -892,7 +892,6 @@ def _pick_auto_courses(token, current: list[str]) -> list[str]:
     if not courses:
         return []
 
-    # Numara seçimi
     print(f"  {dim('Seçmek için numaraları virgülle gir. Boş bırak = hepsi.')}\n")
     for i, c in enumerate(courses, 1):
         code = c.get("courseCode", "?")
@@ -937,15 +936,12 @@ def screen_stats():
         pause()
         return
 
-    # Ders bazlı gruplama
     course_stats: dict[str, dict] = {}
     total_bytes = 0
     missing     = 0
 
     for path_str in mf.values():
         p = __import__("pathlib").Path(path_str)
-        # Klasör yapısı: ALMS/DERS_KODU/Hafta_XX/dosya
-        parts = p.parts
         try:
             dl_root  = get_download_dir()
             rel      = p.relative_to(dl_root)
@@ -970,14 +966,12 @@ def screen_stats():
         print(f"  {bold('Eksik (silindi)')}: {yellow(str(missing))}")
     print()
 
-    # Ders tablosu
     print(f"  {bold('Ders'):<14} {bold('Dosya'):>6}  {bold('Boyut')}")
     print("  " + cyan("─" * 36))
     for course, s in sorted(course_stats.items(), key=lambda x: -x[1]["bytes"]):
         mb = f"{s['bytes']/1_048_576:.1f} MB"
         print(f"  {yellow(course):<22} {s['count']:>5}  {mb:>8}")
 
-    # Son sync tarihi
     activity_log = CONFIG_DIR / "activity.log"
     if activity_log.exists():
         try:
@@ -1016,7 +1010,6 @@ def screen_log():
         pause()
         return
 
-    # Son 30 kaydı göster
     entries = []
     for line in lines:
         try:
@@ -1041,7 +1034,6 @@ def screen_log():
         action = e.get("action", "")
         detail = e.get("detail", {})
 
-        # Detay özeti
         if action == "sync_end":
             d_str = f"✅{detail.get('ok',0)} ⬛{detail.get('skipped',0)} ❌{detail.get('failed',0)}"
         elif action == "download_end":
@@ -1061,11 +1053,8 @@ def screen_log():
     pause()
 
 
-# ─── Ana menü ─────────────────────────────────────────────────
-
 # ─── Dışa Aktar ───────────────────────────────────────────────
 def cmd_export(token):
-    """Ders listesi + indirilen dosya indexini dışa aktar."""
     import json
     from pathlib import Path
     from core.api import get_active_courses
@@ -1150,8 +1139,8 @@ def cmd_export(token):
         print(f"  {dim('📄')} {p}")
     pause()
 
+
 def _token_warning(token, username):
-    """Token 30 dk'dan az kaldıysa ana menüde uyarı göster."""
     from core.auth import get_active_session
     active = get_active_session()
     if not active:
@@ -1166,25 +1155,107 @@ def _token_warning(token, username):
         print(f"  {yellow(f'⚠️  Token {mins} dk sonra sona erecek.')}\n")
 
 
+# ─── Güncelleme kontrolü ──────────────────────────────────────
+# Güncelleme kontrolü — thread sonucu burada tutulur
+_update_result: tuple | None = None   # (has_update, count, remote_ver)
+_update_thread = None
+
+def _start_update_check_bg():
+    """
+    git fetch --dry-run'ı daemon thread'de başlatır.
+    Menü görünmeden ÖNCE çağrılır, menü açılırken arka planda çalışır.
+    """
+    import threading
+
+    global _update_thread, _update_result
+
+    def _run():
+        global _update_result
+        try:
+            from utils.version import check_update_available
+            _update_result = check_update_available()
+        except Exception:
+            _update_result = (False, 0, "")
+
+    _update_thread = threading.Thread(target=_run, daemon=True)
+    _update_thread.start()
+
+
+_update_check_done = False  # menü oturumu boyunca bir kez göster
+
+def _check_and_prompt_update():
+    """
+    Arka plan thread'in sonucunu okur ve kullanıcıya gösterir.
+    Thread henüz bitmemişse max 2 saniye bekler — sonra geçer.
+    """
+    global _update_check_done, _update_thread, _update_result
+
+    if _update_check_done:
+        return
+    _update_check_done = True
+
+    try:
+        # Thread sonucunu bekle (max 2s — timeout'ta sessiz geç)
+        if _update_thread and _update_thread.is_alive():
+            _update_thread.join(timeout=2.0)
+
+        if not _update_result:
+            return
+
+        has_update, count, remote_ver = _update_result
+        if not has_update:
+            return
+
+        from utils.version import get_current_version
+        rv  = f" → v{remote_ver}" if remote_ver else ""
+        cur = get_current_version()
+        print(f"  {yellow('⬆️')}  {bold(f'{count} güncelleme mevcut')}  "
+              f"{dim(f'v{cur}{rv}')}")
+        print()
+
+        try:
+            r = input(f"  Şimdi güncellensin mi? [{green('E')}/{dim('H')}]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return
+
+        if r in ("e", "y", "evet", "yes", "1"):
+            from core.updater import perform_update
+            perform_update()
+            print(f"  {dim('Uygulamayı yeniden başlatın: alms')}")
+            import sys
+            sys.exit(0)
+        else:
+            print(f"  {dim('Güncelleme ertelendi. Manuel: alms update')}\n")
+    except Exception:
+        pass
+
+
+# ─── Ana menü ─────────────────────────────────────────────────
 def run_main_menu(token, username):
+    # Güncelleme kontrolünü arka planda başlat — menü açılırken çalışır
+    _start_update_check_bg()
+
     while True:
         header(show_quote=True)
         print(f"  {bold('👤')} {green(username)}\n")
         _token_warning(token, username)
+        _check_and_prompt_update()
 
         opts = [
-            _t("opt_list"),
-            _t("opt_download"),
-            _t("opt_sync"),
-            _t("opt_today"),
-            _t("opt_open"),
-            _t("opt_status"),
-            "İstatistikler",
-            "Aktivite Logu",
-            "Dışa Aktar",
-            _t("opt_settings"),
-            _t("opt_auto"),
-            red(_t("opt_exit")),
+            _t("opt_list"),           # 1
+            _t("opt_download"),       # 2
+            _t("opt_sync"),           # 3
+            _t("opt_today"),          # 4
+            _t("opt_open"),           # 5
+            _t("opt_status"),         # 6
+            "İstatistikler",          # 7
+            "Aktivite Logu",          # 8
+            "Dışa Aktar",             # 9
+            _t("opt_sinav"),          # 10  ← YENİ
+            _t("opt_settings"),       # 11
+            _t("opt_auto"),           # 12
+            red(_t("opt_exit")),      # 13
         ]
         idx = menu(opts)
 
@@ -1202,15 +1273,11 @@ def run_main_menu(token, username):
             header(_t("opt_sync"))
             sync_manifest_with_disk()
             log_action("sync_start", {"force": False})
-
-            # B: Sync başlangıç bildirimi
             if cfg_get("notify_desktop"):
                 notify("ALMS Sync", "Yeni dosyalar taranıyor...")
-
             with Spinner("Dersler taranıyor..."):
                 courses = get_active_courses(token)
                 files   = collect_files(token, courses, dedup=True)
-
             if not files:
                 print(f"  {dim('Yeni dosya yok.')}")
                 log_action("sync_end", {"found": 0})
@@ -1224,7 +1291,6 @@ def run_main_menu(token, username):
                 print(f"\n  {green('✅')} {result['ok']} indirildi  "
                       f"{dim('⬛')} {result['skipped']} atlandı  "
                       f"{red('❌')} {result['failed']} başarısız")
-                # B: Sync bitiş bildirimi
                 if cfg_get("notify_desktop"):
                     msg = f"{result['ok']} dosya indirildi"
                     if result["failed"]:
@@ -1244,9 +1310,11 @@ def run_main_menu(token, username):
             screen_log()
         elif idx == 8:
             cmd_export(token)
-        elif idx == 9:
-            screen_settings()
+        elif idx == 9:                # ← Sınav Takvimi
+            screen_sinav()
         elif idx == 10:
+            screen_settings()
+        elif idx == 11:
             screen_auto(token)
         else:
             break

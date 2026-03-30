@@ -36,9 +36,11 @@ def _linux(title: str, message: str) -> bool:
 
 
 def _macos(title: str, message: str) -> bool:
+    safe_title   = title.replace('\\', '\\\\').replace('"', '\\"')
+    safe_message = message.replace('\\', '\\\\').replace('"', '\\"')
     script = (
-        f'display notification "{message}" '
-        f'with title "{title}" '
+        f'display notification "{safe_message}" '
+        f'with title "{safe_title}" '
         f'subtitle "ALMS İndirici"'
     )
     result = subprocess.run(

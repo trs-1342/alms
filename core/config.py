@@ -9,6 +9,8 @@ from utils.paths import CONFIG_DIR, CONFIG_FILE, DOWNLOAD_DIR, ensure_secure_dir
 
 log = logging.getLogger(__name__)
 
+_config_cache: dict | None = None
+
 DEFAULTS = {
     "language":       "tr",          # tr | en
     "download_dir":   str(DOWNLOAD_DIR),
@@ -27,6 +29,9 @@ DEFAULTS = {
 
 
 def load() -> dict:
+    global _config_cache
+    if _config_cache is not None:
+        return _config_cache
     ensure_secure_dir(CONFIG_DIR)
     if CONFIG_FILE.exists():
         try:
@@ -34,13 +39,17 @@ def load() -> dict:
             # Eksik anahtarları default ile doldur
             for k, v in DEFAULTS.items():
                 data.setdefault(k, v)
-            return data
+            _config_cache = data
+            return _config_cache
         except (json.JSONDecodeError, OSError) as e:
             log.warning("Config okunamadı, default kullanılıyor: %s", e)
-    return dict(DEFAULTS)
+    _config_cache = dict(DEFAULTS)
+    return _config_cache
 
 
 def save(cfg: dict) -> None:
+    global _config_cache
+    _config_cache = None  # cache'i geçersiz kıl
     ensure_secure_dir(CONFIG_DIR)
     CONFIG_FILE.write_text(
         json.dumps(cfg, ensure_ascii=False, indent=2),

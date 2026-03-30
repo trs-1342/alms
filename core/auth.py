@@ -36,7 +36,7 @@ def _machine_key() -> bytes:
     """
     parts = [
         socket.gethostname(),
-        os.getlogin() if hasattr(os, "getlogin") else "user",
+        os.environ.get("USER") or os.environ.get("USERNAME") or os.environ.get("LOGNAME") or "user",
     ]
 
     # Ekstra entropi: Windows = MachineGuid, Linux = /etc/machine-id
@@ -65,7 +65,7 @@ def _machine_key() -> bytes:
         pass  # entropi olmadan devam
 
     raw  = ":".join(parts).encode()
-    salt = hashlib.sha256(raw).digest()
+    salt = hashlib.sha256(b"alms-kdf-v1:" + raw).digest()
 
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -95,7 +95,14 @@ def load_credentials() -> tuple[str, str] | None:
     try:
         data = json.loads(_fernet().decrypt(CREDS_FILE.read_bytes()))
         return data["u"], data["p"]
-    except (InvalidToken, KeyError, json.JSONDecodeError) as e:
+    except InvalidToken:
+        import sys
+        print("\n⚠️  Kimlik bilgileri güvenlik güncellemesi nedeniyle sıfırlandı.")
+        print("   Tekrar giriş yapın: alms setup")
+        delete_credentials()
+        clear_sessions()
+        sys.exit(0)
+    except (KeyError, json.JSONDecodeError) as e:
         log.error("Kimlik dosyası okunamadı: %s", e)
         return None
 

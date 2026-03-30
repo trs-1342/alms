@@ -64,4 +64,11 @@ def sanitize_log(text: str) -> str:
         r'\1***\2',
         text,
     )
+    # ASP.NET_SessionId maskele
+    text = re.sub(
+        r'(ASP\.NET_SessionId[=:\s"\']+)[a-z0-9]+',
+        r'\1***',
+        text,
+        flags=re.IGNORECASE,
+    )
     return text

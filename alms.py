@@ -12,6 +12,10 @@ Kullanım:
   alms status            → sistem durumu
   alms logout            → kimlik bilgilerini sil
   alms config            → ayarları göster
+  alms obis              → sınav tarihleri
+  alms obis --setup      → OBİS oturum kurulumu
+  alms obis notlar       → ders notları
+  alms obis devamsizlik  → devamsızlık
   alms --help / -h       → yardım
 """
 
@@ -36,7 +40,6 @@ _lock_fd = None
 
 
 def _acquire_lock() -> bool:
-    """Döner: True = kilit alındı, False = başka instance hâlâ çalışıyor."""
     global _lock_fd
     ensure_secure_dir(CONFIG_DIR)
 
@@ -55,17 +58,13 @@ def _acquire_lock() -> bool:
         return True
     else:
         import fcntl
-
-        # Stale lock kontrolü: dosya varsa PID hâlâ çalışıyor mu?
         if LOCK_FILE.exists():
             try:
                 old_pid = int(LOCK_FILE.read_text().strip())
-                # /proc/<pid> yoksa process ölmüş, lock'u temizle
                 if not Path(f"/proc/{old_pid}").exists():
                     LOCK_FILE.unlink(missing_ok=True)
             except Exception:
                 LOCK_FILE.unlink(missing_ok=True)
-
         try:
             _lock_fd = open(LOCK_FILE, "w")
             fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -109,7 +108,6 @@ def setup_logging(verbose: bool = False, quiet: bool = False):
     level = logging.DEBUG if verbose else (logging.WARNING if quiet else logging.INFO)
     fmt   = "%(asctime)s [%(levelname)s] %(message)s"
 
-    # Günlük döndür, 7 gün sakla
     file_handler = TimedRotatingFileHandler(
         LOG_FILE, when="midnight", interval=1,
         backupCount=7, encoding="utf-8", utc=True,
@@ -124,7 +122,6 @@ def setup_logging(verbose: bool = False, quiet: bool = False):
 
     logging.basicConfig(level=level, format=fmt, handlers=handlers)
 
-    # Token/şifre sızdırma önlemi
     sanitizer = _SanitizingFilter()
     for h in logging.root.handlers:
         h.addFilter(sanitizer)
@@ -145,8 +142,16 @@ def build_parser() -> argparse.ArgumentParser:
                    choices=["menu", "setup", "sync", "list",
                             "download", "today", "open",
                             "status", "stats", "log", "export",
-                            "logout", "config"],
+                            "logout", "config", "obis", "update"],
                    help="Çalıştırılacak komut (varsayılan: menu)")
+    p.add_argument("--version", action="store_true",
+                   help="Sürüm bilgisini göster ve güncelleme var mı kontrol et")
+    p.add_argument("subcommand", nargs="?", default=None,
+                   help="obis alt komutu: sinav | notlar | devamsizlik")
+    p.add_argument("--setup", action="store_true",
+                   help="obis: OBİS oturum kurulumu")
+    p.add_argument("--sinav", action="store_true",
+                   help="obis: sınav tarihlerini göster")
     p.add_argument("-v", "--verbose", action="store_true",
                    help="Ayrıntılı loglar")
     p.add_argument("-q", "--quiet", action="store_true",
@@ -186,10 +191,9 @@ def cmd_sync(token: str, args):
     quiet = getattr(args, "quiet", False)
     force = getattr(args, "force", False) or getattr(args, "all", False)
 
-    # Ders filtresi: --courses > --course > config auto_sync_courses
     course_filter = None
-    courses_arg   = getattr(args, "courses", None)   # "FIZ108,YZM102"
-    course_arg    = getattr(args, "course",  None)   # "FIZ108"
+    courses_arg   = getattr(args, "courses", None)
+    course_arg    = getattr(args, "course",  None)
 
     if courses_arg:
         course_filter = [c.strip() for c in courses_arg.split(",") if c.strip()]
@@ -201,7 +205,6 @@ def cmd_sync(token: str, args):
         if saved:
             course_filter = saved
 
-    # Ağ bağlantısı kontrolü
     from utils.network import check_alms_reachable
     reachable, net_msg = check_alms_reachable()
     if not reachable:
@@ -210,7 +213,6 @@ def cmd_sync(token: str, args):
             print(f"\n  ❌ Bağlantı hatası: {net_msg}")
         return
 
-    # Manifest temizle
     removed = sync_manifest_with_disk()
     if removed:
         log.info("🗑  Manifest temizlendi — %d kayıt kaldırıldı.", removed)
@@ -219,7 +221,6 @@ def cmd_sync(token: str, args):
              f" (dersler: {', '.join(course_filter)})" if course_filter else "")
     log_action("sync_start", {"force": force, "courses": course_filter or []})
 
-    # B: Sync başlangıç bildirimi (otomasyon/cron için de çalışır)
     from utils.notify import send as notify
     from core.config import get as cfg_get
     if cfg_get("notify_desktop"):
@@ -255,8 +256,8 @@ def cmd_sync(token: str, args):
 
     log.info("📦 %d dosya indirilecek...", len(files))
 
-    _ok_count    = [0]
-    _fail_count  = [0]
+    _ok_count   = [0]
+    _fail_count = [0]
 
     def on_progress(done, total, f, result):
         if result["ok"] and not result.get("skipped"):
@@ -268,12 +269,10 @@ def cmd_sync(token: str, args):
         bar_w  = 20
         filled = int(bar_w * pct / 100)
         bar    = "█" * filled + "░" * (bar_w - filled)
-
         status = "✅" if result["ok"] and not result.get("skipped") else (
                  "⬛" if result.get("skipped") else "❌")
 
         if quiet:
-            # Cron modunda sadece log'a yaz (her %10'da bir)
             if pct % 10 == 0 or done == total:
                 log.info("  %d/%d (%d%%) — ✅%d ❌%d",
                          done, total, pct, _ok_count[0], _fail_count[0])
@@ -327,7 +326,6 @@ def cmd_list(token: str):
 
 
 def cmd_open():
-    """İndirme klasörünü dosya yöneticisinde aç."""
     import subprocess
     from core.config import get_download_dir
     dl = get_download_dir()
@@ -370,9 +368,16 @@ def cmd_config():
     from core.config import load
     import json
     cfg = load()
-    # Hassas alanları gösterme
     safe = {k: v for k, v in cfg.items() if "token" not in k.lower()}
     print(json.dumps(safe, ensure_ascii=False, indent=2))
+
+
+def cmd_obis(args):
+    from core.obis import obis_main
+    # --sinav → subcommand="sinav" olarak çevir
+    if getattr(args, "sinav", False):
+        args.subcommand = "sinav"
+    obis_main(args)
 
 
 # ─── Main ─────────────────────────────────────────────────────
@@ -383,24 +388,46 @@ def main():
     setup_logging(args.verbose, args.quiet)
     log = logging.getLogger(__name__)
 
+    # --version
+    if getattr(args, "version", False):
+        from utils.version import get_current_version, check_update_available
+        ver = get_current_version()
+        print(f"  ALMS İndirici v{ver}")
+        print("  Güncelleme kontrol ediliyor...")
+        has_update, count, remote_ver = check_update_available()
+        if has_update:
+            rv = f" (v{remote_ver})" if remote_ver else ""
+            print(f"  ⬆️  {count} güncelleme mevcut{rv} — yüklemek için: alms update")
+        else:
+            print("  ✅ Güncel")
+        return
+
+    # OBİS komutu — token gerektirmez
+    if args.command == "obis":
+        cmd_obis(args)
+        return
+
+    # Update komutu — token gerektirmez
+    if args.command == "update":
+        from core.updater import perform_update
+        perform_update()
+        return
+
     # Setup komutu kilit gerektirmez
     if args.command == "setup":
         cmd_setup()
         return
 
-    # Kilit al
     if not _acquire_lock():
-        print("⚠️  ALMS zaten çalışıyor. Birden fazla instance başlatılamaz.")
+        print("⚠️  ALMS zaten çalışıyor.")
         sys.exit(1)
 
-    # İlk kurulum yapılmadıysa wizard'a yönlendir
     from utils.paths import CREDS_FILE
     if not CREDS_FILE.exists() and args.command != "logout":
         print("Henüz kurulum yapılmamış. Kurulum sihirbazı başlatılıyor...\n")
         cmd_setup()
         return
 
-    # Token al
     try:
         from core.auth import get_or_refresh_token
         token, username = get_or_refresh_token()
@@ -408,7 +435,6 @@ def main():
         log.error("Giriş yapılamadı: %s", e)
         sys.exit(1)
 
-    # Komutu çalıştır
     try:
         if args.command in ("menu", None):
             cmd_menu(token, username)

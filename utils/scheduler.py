@@ -3,6 +3,7 @@ utils/scheduler.py — Linux crontab ile otomatik çalıştırma
 """
 import os
 import platform
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -45,7 +46,7 @@ def _write_wrapper(courses: list[str] | None = None) -> Path:
     - İlerleme yüzdesi log'a
     - Lock mekanizması
     """
-    course_args = f" --courses {','.join(courses)}" if courses else ""
+    course_args = (f" --courses {shlex.quote(','.join(courses))}" if courses else "")
     log_file    = Path.home() / ".config" / "alms" / "cron.log"
     home        = Path.home()
 
@@ -89,17 +90,15 @@ SCRIPT="{SCRIPT}"
 LOG="{log_file}"
 LOCK="{home}/.config/alms/.cron.lock"
 
-# Zaten çalışıyor mu?
-if [ -f "$LOCK" ]; then
-    PID=$(cat "$LOCK" 2>/dev/null)
-    if kill -0 "$PID" 2>/dev/null; then
-        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [SKIP] Zaten çalışıyor (PID=$PID)" >> "$LOG"
-        exit 0
-    fi
+# Log 1MB'ı geçince eski logu arşivle
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+    mv "$LOG" "$LOG.old"
 fi
 
-# Lock al
-echo $$ > "$LOCK"
+# Atomik lock (flock) — TOCTOU race condition önleme
+exec 9>"$LOCK"
+flock -n 9 || {{ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [SKIP] Zaten çalışıyor" >> "$LOG"; exit 0; }}
+echo $$ >&9
 trap "rm -f '$LOCK'" EXIT
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [START] ALMS sync başlıyor{course_args}" >> "$LOG"
@@ -169,7 +168,7 @@ def _ensure_cron_running() -> None:
 
 # ─── Linux: crontab ──────────────────────────────────────────
 def _cron_entry(hour: int, minute: int, wrapper: Path) -> str:
-    return f"{minute} {hour} * * * {wrapper} {_CRON_TAG}\n"
+    return f"{minute} {hour} * * * {wrapper} {_CRON_TAG}".rstrip() + "\n"
 
 
 def _reboot_entry(wrapper: Path) -> str:
@@ -298,7 +297,7 @@ def launchd_status() -> str | None:
 
 # ─── Windows: schtasks ───────────────────────────────────────
 def schtasks_add(hour: int, minute: int, courses: list[str] | None = None) -> bool:
-    course_args = f" --courses {','.join(courses)}" if courses else ""
+    course_args = (f' --courses "{",".join(courses)}"' if courses else "")
     cmd = [
         "schtasks", "/Create", "/F",
         "/TN", JOB_NAME,

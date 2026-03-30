@@ -1,10 +1,7 @@
 # ALMS İndirici
 
-IGU (İstanbul Gelişim Üniversitesi) ALMS sistemindeki ders materyallerini otomatik indiren komut satırı aracı.
-
-## Amaç
-
-ALMS web arayüzüne her girmeden, tek komutla tüm ders materyallerini senkronize etmek. Dosyalar ders koduna ve haftaya göre düzenlenir, belirtilen saatte otomatik indirilir.
+IGU (İstanbul Gelişim Üniversitesi) ALMS ve OBİS sistemlerine tek komutla erişim.
+Ders materyallerini otomatik indirir, sınav tarihlerini gösterir.
 
 ```
 ~/ALMS/
@@ -108,12 +105,6 @@ cd alms
 setup.bat
 ```
 
-`setup.bat` otomatik olarak şunları yapar:
-- Python sürümünü kontrol eder
-- `.venv` sanal ortamını oluşturur
-- `alms.bat` wrapper oluşturur ve PATH'e ekler
-- Task Scheduler erişimini test eder
-
 ```bat
 :: Yeni terminal aç ve kurulumu tamamla:
 alms setup
@@ -130,14 +121,12 @@ alms setup
 
 ## Kullanım
 
-### Komutlar
+### ALMS Komutları
 
 | Komut | Açıklama |
 |-------|----------|
 | `alms` | İnteraktif menü |
 | `alms setup` | İlk kurulum / yeniden yapılandırma |
-| `alms setup --reconfigure credentials` | Sadece şifre güncelle |
-| `alms setup --reconfigure schedule` | Sadece otomasyon saatini güncelle |
 | `alms sync` | Yeni dosyaları indir |
 | `alms sync --courses FIZ108,YZM102` | Belirli dersleri indir |
 | `alms sync --force` | Tüm dosyaları yeniden indir |
@@ -145,10 +134,27 @@ alms setup
 | `alms download` | Dosya seçerek indir |
 | `alms today` | Yaklaşan aktiviteler |
 | `alms open` | İndirme klasörünü aç |
-| `alms status` | Sistem durumu |
+| `alms status` | Sistem durumu + OBİS oturum durumu |
 | `alms stats` | İndirme istatistikleri |
 | `alms log` | Aktivite logu |
+| `alms export` | Ders indexini Markdown/JSON olarak dışa aktar |
+| `alms update` | Güncelleme yükle |
+| `alms --version` | Sürüm bilgisi + güncelleme var mı kontrol et |
 | `alms logout` | Kayıtlı kimlik bilgilerini sil |
+
+### OBİS Komutları
+
+| Komut | Açıklama |
+|-------|----------|
+| `alms obis --setup` | OBİS oturumu kur (bir kez yapılır) |
+| `alms obis --sinav` | Sınav tarihlerini göster |
+| `alms obis notlar` | Ders notlarını göster |
+| `alms obis devamsizlik` | Devamsızlık durumunu göster |
+
+> **OBİS kurulumu:** Tarayıcıda OBİS'e giriş yaptıktan sonra
+> `F12 → Storage → Cookies → ASP.NET_SessionId` değerini kopyalayıp
+> `alms obis --setup` komutuna yapıştır.
+> Oturum kapanmadığı sürece token geçerli kalır.
 
 ### Filtreler
 
@@ -170,19 +176,19 @@ alms sync --quiet                  # Sessiz mod (otomasyon için)
 ↑↓ hareket   SPACE seç   G grup seç   A hepsi   N temizle   F filtrele   ENTER onayla   Q iptal
 
   ▶ FIZ108  2/18
-      ○ W01  fizik_2_1_hafta.pdf         4.1 MB
-      ● W07  Fizik_2_Bolum_6.pdf         4.8 MB
+    ◉ W01  fizik_2_1_hafta.pdf         4.1 MB  ✓  (indirilmiş)
+    ● W07  Fizik_2_Bolum_6.pdf         4.8 MB     (seçili)
     YZM102  0/4
-      ○ W04  Pointers2.pdf               0.3 MB
+    ○ W04  Pointers2.pdf               0.3 MB
 ```
 
-`F` tuşuna basarak dosya adı veya ders kodu ile filtrele.
+`F` tuşuyla dosya adı veya ders kodu ile filtrele. `ESC` filtreyi temizler.
 
 ---
 
 ## Otomatik İndirme
 
-`alms` menüsünden **Otomatik Çalıştırma** seçeneği ile ayarlanır:
+`alms` menüsünden **[11] Otomatik Çalıştırma** ile ayarlanır:
 - Saat/dakika belirle
 - İndirilecek dersleri seç (boş = tüm dersler)
 
@@ -196,12 +202,37 @@ Log: `~/.config/alms/cron.log`
 
 ---
 
+## Güncelleme
+
+```bash
+alms update
+```
+
+Güncelleme sistemi şunları yapar:
+1. Config dosyalarını yedekler
+2. `git pull origin main`
+3. Bağımlılıkları günceller
+4. Otomasyonu yeniler
+5. Yedekleri temizler
+
+Hata durumunda otomatik rollback yapılır.
+
+Menü açılışında güncelleme varsa bildirim gösterilir:
+
+```
+⬆️  3 güncelleme mevcut  v1.4.0 → v1.5.0
+Şimdi güncellensin mi? [E/H]:
+```
+
+---
+
 ## Güvenlik
 
 - Giriş bilgileri **AES-256** (Fernet) ile şifrelenir
 - Şifreleme anahtarı makineye özel — dosya başka bilgisayarda açılamaz
-- Config dizini `chmod 700`
-- Token ve şifre log'a yazılmaz
+- OBİS oturum tokeni şifreli saklanır
+- Config dizini `chmod 700`, dosyalar `chmod 600`
+- Token ve şifre log dosyasına yazılmaz
 - SSL doğrulama her zaman açık
 
 ---
@@ -209,8 +240,9 @@ Log: `~/.config/alms/cron.log`
 ## Bağımlılıklar
 
 ```
-requests>=2.31.0
-cryptography>=42.0.0
+requests>=2.31.0,<3.0.0
+cryptography>=42.0.0,<45.0.0
+beautifulsoup4>=4.12.0,<5.0.0
 ```
 
 `setup.sh` / `setup.bat` otomatik kurar.
