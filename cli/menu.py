@@ -724,6 +724,29 @@ def screen_status(token, username):
     header(_t("status_title"))
     now = datetime.now(timezone.utc)
 
+    # ── Sürüm + güncelleme ────────────────────────────────────
+    try:
+        from utils.version import get_current_version
+        ver = get_current_version()
+        ver_str = cyan(f"v{ver}")
+    except Exception:
+        ver_str = dim("bilinmiyor")
+
+    # Güncelleme bilgisi: arka plan thread sonucunu kullan (varsa)
+    try:
+        from cli.menu import _update_result
+        if _update_result and _update_result[0]:
+            _, count, remote_ver = _update_result
+            rv = f" → v{remote_ver}" if remote_ver else ""
+            upd_str = yellow(f"⬆️  {count} güncelleme mevcut{rv}  →  alms update")
+        else:
+            upd_str = green("Güncel")
+    except Exception:
+        upd_str = dim("kontrol edilmedi")
+
+    print(f"  🏷️   {bold('Sürüm')}      : {ver_str}  {upd_str}")
+
+    # ── ALMS Token ────────────────────────────────────────────
     active = get_active_session()
     if active:
         exp  = datetime.fromisoformat(active["expires"])
@@ -757,13 +780,13 @@ def screen_status(token, username):
     net_str = green("Erişilebilir") if reachable else red(f"Erişilemiyor — {msg}")
     print(f"  🌐  {bold('ALMS Ağ')}    : {net_str}")
 
-    # OBİS oturum durumu
+    # ── OBİS oturum durumu ────────────────────────────────────
     try:
         from core.obis import load_session, _test_session
         obis_cookie = load_session()
         if obis_cookie:
             obis_ok = _test_session(obis_cookie)
-            obis_str = green("Geçerli") if obis_ok else yellow("Sona ermiş")
+            obis_str = green("Geçerli") if obis_ok else yellow("Sona ermiş  →  alms obis --setup")
         else:
             obis_str = dim("Kurulmamış  →  alms obis --setup")
         print(f"  🎓  {bold('OBİS')}       : {obis_str}")
