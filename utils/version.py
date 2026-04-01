@@ -92,16 +92,28 @@ def _write(data: dict):
 def get_current_version() -> str:
     """
     Mevcut sürümü döner.
-    Öncelik: version.json → git tag → git hash → "unknown"
+    Öncelik: version.json → git tag + commit sayısı → git hash → "unknown"
+
+    Versiyon formatı: MAJOR.MINOR.PATCH
+      MAJOR.MINOR → en son git tag'den
+      PATCH       → o tag'den bu yana commit sayısı
     """
+    # 1. version.json varsa onu kullan (alms update sonrası set edilir)
     data = _read()
     if data.get("version"):
         return data["version"]
 
+    # 2. Git tag + commit sayısından hesapla
     tag = _current_tag()
     if tag:
+        patch = _git(["rev-list", "--count", f"v{tag}..HEAD"])
+        if patch.isdigit():
+            parts = tag.split(".")
+            major_minor = ".".join(parts[:2]) if len(parts) >= 2 else tag
+            return f"{major_minor}.{patch}"
         return tag
 
+    # 3. Commit hash fallback
     build = _current_build()
     return f"dev-{build}" if build != "unknown" else "unknown"
 

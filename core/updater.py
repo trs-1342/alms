@@ -103,31 +103,40 @@ def _pip_install() -> tuple[bool, str]:
 def _resolve_new_version(old_ver: str) -> tuple[str, str]:
     """
     git pull sonrası yeni versiyon ve build'i belirle.
-    Öncelik: git tag → commit sayısından türet → eski ver koru
+
+    Mantık:
+      - En son tag'in MAJOR.MINOR'ını al (örn: v1.4 → 1.4)
+      - PATCH = o tag'den bu yana kaç commit var
+      - Sonuç: 1.4.0, 1.4.1, 1.4.2 ... otomatik artar
+      - Yeni tag atılırsa (v1.5) MAJOR.MINOR değişir
 
     Döner: (new_version, build_hash)
     """
-    # 1. Git tag varsa onu kullan
-    tag = _git_out(["describe", "--tags", "--abbrev=0"]).lstrip("v")
-    build = _git_out(["rev-parse", "--short", "HEAD"])
+    build = _git_out(["rev-parse", "--short", "HEAD"]) or "unknown"
 
-    if tag and tag != old_ver:
+    # En son tag'i bul
+    tag = _git_out(["describe", "--tags", "--abbrev=0"]).lstrip("v")
+
+    if not tag:
+        # Tag hiç yok — eski versiyonu koru, sadece build güncelle
+        return old_ver, build
+
+    # Tag'den bu yana kaç commit var?
+    patch = _git_out(["rev-list", "--count", f"v{tag}..HEAD"])
+
+    if not patch.isdigit():
+        # Sayım başarısız — tag'i olduğu gibi kullan
         return tag, build
 
-    # 2. Tag yoksa — commit sayısından PATCH artır
-    # Format: MAJOR.MINOR.PATCH → PATCH = toplam commit sayısı
-    try:
-        parts = old_ver.split(".")
-        if len(parts) == 3:
-            commit_count = _git_out(["rev-list", "--count", "HEAD"])
-            if commit_count.isdigit():
-                parts[2] = commit_count
-                return ".".join(parts), build
-    except Exception:
-        pass
+    # MAJOR.MINOR tag'den, PATCH commit sayısından
+    parts = tag.split(".")
+    if len(parts) >= 2:
+        major_minor = ".".join(parts[:2])  # örn: "1.4"
+        new_ver = f"{major_minor}.{patch}"  # örn: "1.4.5"
+    else:
+        new_ver = f"{tag}.{patch}"
 
-    # 3. Fallback — eski versiyon koru, sadece build güncelle
-    return old_ver, build
+    return new_ver, build
 
 
 def _get_changelog(old_ver: str) -> str:
