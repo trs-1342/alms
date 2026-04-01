@@ -21,7 +21,7 @@ def _backup_config() -> list[Path]:
     from utils.paths import CONFIG_DIR
     backed = []
     targets = ["credentials.enc", "sessions.enc", "config.json",
-               "obis_session", "manifest.json"]
+               "obis_session", "manifest.json", "version.json"]
     for name in targets:
         src = CONFIG_DIR / name
         if src.exists():
@@ -33,54 +33,19 @@ def _backup_config() -> list[Path]:
 
 
 def _restore_backups(backups: list[Path]):
-    """Yedekleri orijinal konumlarına geri yükler."""
     for bak in backups:
-        original = bak.with_suffix("")  # .bak kaldır
+        original = bak.with_suffix("")
         if bak.exists():
             bak.replace(original)
             log.debug("Geri yüklendi: %s", original.name)
 
 
 def _cleanup_backups(backups: list[Path]):
-    """Başarılı güncelleme sonrası yedekleri sil."""
     for bak in backups:
         bak.unlink(missing_ok=True)
 
 
 # ── Git işlemleri ─────────────────────────────────────────────
-
-def _fetch_remote() -> bool:
-    """origin/main'i gerçekten günceller (önizleme + hızlı pull için)."""
-    r = subprocess.run(
-        ["git", "fetch", "origin", "main"],
-        cwd=_ROOT, capture_output=True, timeout=30
-    )
-    return r.returncode == 0
-
-
-def _get_remote_version() -> str:
-    """Fetch sonrası uzaktaki version.txt içeriğini okur."""
-    try:
-        r = subprocess.run(
-            ["git", "show", "origin/main:version.txt"],
-            cwd=_ROOT, capture_output=True, text=True, timeout=5
-        )
-        return r.stdout.strip() if r.returncode == 0 else ""
-    except Exception:
-        return ""
-
-
-def _incoming_commits() -> list[str]:
-    """HEAD..origin/main arası commit mesajlarını döner (fetch sonrası)."""
-    try:
-        r = subprocess.run(
-            ["git", "log", "HEAD..origin/main", "--oneline", "--no-merges"],
-            cwd=_ROOT, capture_output=True, text=True, timeout=5
-        )
-        return [l.strip() for l in r.stdout.strip().splitlines() if l.strip()]
-    except Exception:
-        return []
-
 
 def _git_stash() -> bool:
     r = subprocess.run(
@@ -96,10 +61,6 @@ def _git_stash_pop():
 
 
 def _git_pull() -> tuple[bool, str]:
-    """
-    git pull origin main çalıştırır.
-    Döner: (başarılı, hata_mesajı)
-    """
     r = subprocess.run(
         ["git", "pull", "origin", "main"],
         cwd=_ROOT, capture_output=True, text=True, timeout=60
@@ -109,14 +70,41 @@ def _git_pull() -> tuple[bool, str]:
     return False, (r.stderr or r.stdout).strip()
 
 
+def _get_changelog_from_git(old_ver: str) -> str:
+    """Son güncelleme commit mesajlarını tek satır özet olarak döner."""
+    try:
+        # Tag varsa tag'den itibaren, yoksa son 5 commit
+        ref = f"v{old_ver}..HEAD" if old_ver and old_ver != "unknown" else "-5"
+        r = subprocess.run(
+            ["git", "log", ref, "--oneline", "--no-merges"],
+            cwd=_ROOT, capture_output=True, text=True, timeout=5
+        )
+        lines = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()]
+        if not lines:
+            return ""
+        # İlk 3 commit'i özetle
+        summary = "; ".join(l.split(" ", 1)[1] for l in lines[:3] if " " in l)
+        if len(lines) > 3:
+            summary += f" (+{len(lines)-3} daha)"
+        return summary
+    except Exception:
+        return ""
+
+
 # ── pip güncelleme ────────────────────────────────────────────
 
 def _pip_install() -> tuple[bool, str]:
     req = _ROOT / "requirements.txt"
     if not req.exists():
-        return True, ""  # requirements yok, geç
+        return True, ""
 
-    venv_pip = _ROOT / ".venv" / "bin" / "pip"
+    # .venv varsa onu kullan, yoksa sistem pip
+    import platform
+    if platform.system() == "Windows":
+        venv_pip = _ROOT / ".venv" / "Scripts" / "pip.exe"
+    else:
+        venv_pip = _ROOT / ".venv" / "bin" / "pip"
+
     pip_cmd = str(venv_pip) if venv_pip.exists() else "pip"
 
     r = subprocess.run(
@@ -138,7 +126,7 @@ def _refresh_automation():
         from utils.paths import LOG_FILE
 
         if not get_schedule_status():
-            return  # otomasyon kapalı, gerek yok
+            return
 
         h = cfg_get("auto_sync_hour") or 8
         m = cfg_get("auto_sync_min") or 0
@@ -153,48 +141,28 @@ def _refresh_automation():
 
 def perform_update() -> bool:
     """
-    Güvenli güncelleme işlemi:
-    1. Yedek al
+    Güvenli güncelleme:
+    1. Config dosyalarını yedekle (version.json dahil)
     2. git stash (yerel değişiklikler varsa)
     3. git pull
     4. pip install
-    5. Migration çalıştır
-    6. Otomasyon yenile
-    7. Yedekleri temizle
+    5. version.json'u config dizininde güncelle
+    6. Migration çalıştır
+    7. Otomasyon yenile
+    8. Yedekleri temizle
 
-    Herhangi bir adım başarısız olursa rollback yapar.
+    Herhangi bir adım başarısız → rollback.
     Döner: True = başarılı, False = başarısız
     """
-    from utils.version import get_current_version
+    from utils.version import get_current_version, save_version
     old_ver = get_current_version()
 
     print(f"\n  📦 Güncelleme başlatılıyor... (mevcut: v{old_ver})\n")
 
-    # 0. Remote fetch + önizleme
-    print("  🔍 Uzak repo kontrol ediliyor...")
-    fetched = _fetch_remote()
-    if fetched:
-        remote_ver = _get_remote_version()
-        if remote_ver and remote_ver != old_ver:
-            print(f"  🆕 Yeni sürüm: v{old_ver} → v{remote_ver}\n")
-
-        commits = _incoming_commits()
-        if commits:
-            print(f"  📋 Gelmekte olan değişiklikler ({len(commits)} commit):")
-            for line in commits[:8]:
-                print(f"     • {line}")
-            if len(commits) > 8:
-                print(f"     ... ve {len(commits) - 8} commit daha")
-            print()
-    else:
-        print("  ⚠️  Uzak repo erişilemedi, doğrudan pull deneniyor...\n")
-
     # 1. Yedek al
     backups = _backup_config()
-    if backups:
-        log.debug("%d dosya yedeklendi", len(backups))
 
-    # 2. git stash (yerel değişiklik varsa)
+    # 2. git stash
     stashed = False
     dirty = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -224,11 +192,25 @@ def perform_update() -> bool:
     if not ok:
         print(f"  ⚠️  Paketler güncellenemedi: {err}")
         print("     Manuel: pip install -r requirements.txt")
-        # Kritik değil — devam et
     else:
         print("  ✅ Bağımlılıklar güncellendi")
 
-    # 5. Migration
+    # 5. version.json güncelle — config dizininde, proje klasöründe değil
+    print("  🏷️  Sürüm bilgisi güncelleniyor...")
+    try:
+        # Yeni sürümü git tag'den al
+        r = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            cwd=_ROOT, capture_output=True, text=True, timeout=5
+        )
+        new_ver = r.stdout.strip().lstrip("v") if r.returncode == 0 else old_ver
+        changelog = _get_changelog_from_git(old_ver)
+        save_version(new_ver, changelog)
+        print(f"  ✅ Sürüm: v{old_ver} → v{new_ver}")
+    except Exception as e:
+        log.warning("Sürüm güncellenemedi: %s", e)
+
+    # 6. Migration
     print("  🔄 Veri formatları kontrol ediliyor...")
     try:
         from core.migration import run_migrations
@@ -237,51 +219,37 @@ def perform_update() -> bool:
     except ImportError:
         log.debug("core/migration.py henüz yok, atlandı")
     except Exception as e:
-        log.warning("Migration uyarısı: %s", e)
         print(f"  ⚠️  Migration uyarısı: {e}")
 
-    # 6. Otomasyon yenile
+    # 7. Otomasyon yenile
     print("  🕐 Otomasyon güncelleniyor...")
     _refresh_automation()
 
-    # 7. Yedekleri temizle
+    # 8. Yedekleri temizle
     _cleanup_backups(backups)
 
-    # Yeni versiyon
-    # lru_cache temizle — yeni version.txt okunsun
+    # Sonuç
     from utils.version import get_current_version as gcv
     gcv.cache_clear()
-    new_ver = gcv()
-
-    ver_str = f"v{old_ver} → v{new_ver}" if old_ver != new_ver else f"v{new_ver}"
+    final_ver = gcv()
+    ver_str = f"v{old_ver} → v{final_ver}" if old_ver != final_ver else f"v{final_ver}"
     print(f"\n  ✅ Güncelleme tamamlandı: {ver_str}\n")
 
-    # Changelog özeti göster
     _show_changelog_summary(old_ver)
-
     return True
 
 
 def _show_changelog_summary(old_ver: str):
-    """Son güncelleme commit mesajlarını kısaca gösterir."""
+    """Son güncelleme commit mesajlarını gösterir."""
     try:
-        # Önce git tag ile dene (ör. v1.4.0..HEAD)
+        ref = f"v{old_ver}..HEAD" if old_ver and old_ver != "unknown" else "-5"
         r = subprocess.run(
-            ["git", "log", f"v{old_ver}..HEAD", "--oneline", "--no-merges"],
+            ["git", "log", ref, "--oneline", "--no-merges"],
             cwd=_ROOT, capture_output=True, text=True, timeout=5
         )
         lines = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()]
-
-        # Tag yoksa veya boşsa ORIG_HEAD kullan (git pull sonrası her zaman set edilir)
-        if not lines:
-            r = subprocess.run(
-                ["git", "log", "ORIG_HEAD..HEAD", "--oneline", "--no-merges"],
-                cwd=_ROOT, capture_output=True, text=True, timeout=5
-            )
-            lines = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()]
-
         if lines:
-            print("  📋 Yüklenen değişiklikler:")
+            print("  📋 Değişiklikler:")
             for line in lines[:8]:
                 print(f"     • {line}")
             if len(lines) > 8:

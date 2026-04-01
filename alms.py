@@ -174,7 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
 # ─── Komutlar ────────────────────────────────────────────────
 def cmd_setup():
     from cli.wizard import run_wizard
+    from utils.version import init_version_if_missing
     run_wizard()
+    # version.json yoksa oluştur (ilk kurulum)
+    init_version_if_missing()
 
 
 def cmd_menu(token: str, username: str):
@@ -390,9 +393,14 @@ def main():
 
     # --version
     if getattr(args, "version", False):
-        from utils.version import get_current_version, check_update_available
-        ver = get_current_version()
+        from utils.version import get_current_version, get_version_info, check_update_available
+        ver  = get_current_version()
+        info = get_version_info()
         print(f"  ALMS İndirici v{ver}")
+        if info.get("updated_at"):
+            print(f"  Güncellendi : {info['updated_at'][:10]}")
+        if info.get("changelog"):
+            print(f"  Değişiklik  : {info['changelog']}")
         print("  Güncelleme kontrol ediliyor...")
         has_update, count, remote_ver = check_update_available()
         if has_update:
@@ -421,6 +429,13 @@ def main():
     if not _acquire_lock():
         print("⚠️  ALMS zaten çalışıyor.")
         sys.exit(1)
+
+    # version.json yoksa oluştur
+    try:
+        from utils.version import init_version_if_missing
+        init_version_if_missing()
+    except Exception:
+        pass
 
     from utils.paths import CREDS_FILE
     if not CREDS_FILE.exists() and args.command != "logout":
