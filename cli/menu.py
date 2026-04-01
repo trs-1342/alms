@@ -726,17 +726,22 @@ def screen_status(token, username):
 
     # ── Sürüm + güncelleme ────────────────────────────────────
     try:
-        from utils.version import get_current_version
-        ver = get_current_version()
-        ver_str = cyan(f"v{ver}")
+        from utils.version import get_current_version, get_version_info
+        ver  = get_current_version()
+        info = get_version_info()
+        build = info.get("build", "")
+        build_str = dim(f" ({build})") if build else ""
+        ver_str = cyan(f"v{ver}") + build_str
     except Exception:
         ver_str = dim("bilinmiyor")
 
-    # Güncelleme bilgisi: arka plan thread sonucunu kullan (varsa)
+    # Güncelleme bilgisi: modül-level _update_result kullan (circular import yok)
     try:
-        from cli.menu import _update_result
-        if _update_result and _update_result[0]:
-            _, count, remote_ver = _update_result
+        import sys as _sys
+        _menu_mod = _sys.modules.get(__name__, None)
+        _ur = getattr(_menu_mod, "_update_result", None) if _menu_mod else None
+        if _ur and _ur[0]:
+            _, count, remote_ver = _ur
             rv = f" → v{remote_ver}" if remote_ver else ""
             upd_str = yellow(f"⬆️  {count} güncelleme mevcut{rv}  →  alms update")
         else:

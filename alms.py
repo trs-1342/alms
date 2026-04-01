@@ -396,7 +396,9 @@ def main():
         from utils.version import get_current_version, get_version_info, check_update_available
         ver  = get_current_version()
         info = get_version_info()
-        print(f"  ALMS İndirici v{ver}")
+        build = info.get("build", "")
+        build_str = f" (build: {build})" if build else ""
+        print(f"  ALMS İndirici v{ver}{build_str}")
         if info.get("updated_at"):
             print(f"  Güncellendi : {info['updated_at'][:10]}")
         if info.get("changelog"):
@@ -404,7 +406,7 @@ def main():
         print("  Güncelleme kontrol ediliyor...")
         has_update, count, remote_ver = check_update_available()
         if has_update:
-            rv = f" (v{remote_ver})" if remote_ver else ""
+            rv = f" → v{remote_ver}" if remote_ver else ""
             print(f"  ⬆️  {count} güncelleme mevcut{rv} — yüklemek için: alms update")
         else:
             print("  ✅ Güncel")

@@ -38,3 +38,4 @@ desktop.ini
 test/
 *.md
 !README.md
+!KULLANIM.md

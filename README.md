@@ -18,222 +18,134 @@ Ders materyallerini otomatik indirir, sınav tarihlerini gösterir.
 
 ## Kurulum
 
-### Linux (Arch, Ubuntu, Fedora, vb.)
-
-**Gereksinimler:** Python 3.10+, Git
+### Linux
 
 ```bash
-# 1. Repoyu klonla
 git clone https://github.com/trs-1342/alms
 cd alms
-
-# 2. Kurulum scriptini çalıştır
 chmod +x setup.sh && ./setup.sh
-```
-
-`setup.sh` otomatik olarak şunları yapar:
-- Python sürümünü kontrol eder
-- `.venv` sanal ortamını oluşturur ve paketleri yükler
-- `alms` komutunu `~/.local/bin`'e ekler
-- Shell profilini (`~/.bashrc` / `~/.zshrc`) günceller
-- `cronie` / `cron` servisini kontrol eder, çalışmıyorsa başlatır
-
-```bash
-# 3. Yeni terminal aç (PATH için) ve kurulumu tamamla
 alms setup
 ```
 
-> **Not:** `cronie` kurulu değilse:
+> `cronie` gereklidir (otomasyon için):
 > ```bash
-> # Arch/Manjaro
-> sudo pacman -S cronie
-> sudo systemctl enable --now cronie
->
-> # Ubuntu/Debian
-> sudo apt install cron
->
-> # Fedora
-> sudo dnf install cronie
-> sudo systemctl enable --now cronie
+> sudo pacman -S cronie && sudo systemctl enable --now cronie   # Arch
+> sudo apt install cron                                          # Ubuntu
 > ```
-
----
 
 ### macOS
 
-**Gereksinimler:** Python 3.10+ (Homebrew önerilir), Git
-
 ```bash
-# Homebrew ile Python kur (zaten yoksa)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 brew install python3 git
-
-# Repoyu klonla
 git clone https://github.com/trs-1342/alms
 cd alms
-
-# Kurulum
 chmod +x setup.sh && ./setup.sh
-```
-
-```bash
-# Yeni terminal aç ve kurulumu tamamla
 alms setup
 ```
-
-Otomatik çalıştırma macOS'ta **launchd** ile yapılır. `alms setup` veya menüden ayarlanır.
-
-> **Not:** `alms` komutu tanınmıyorsa:
-> ```bash
-> source ~/.zshrc   # veya ~/.bashrc
-> ```
-
----
 
 ### Windows
 
-**Gereksinimler:** Python 3.10+, Git
-
-1. [Python 3.10+](https://www.python.org/downloads/) indir ve kur
-   - ⚠️ Kurulumda **"Add Python to PATH"** seçeneğini işaretle
-2. [Git for Windows](https://git-scm.com/download/win) indir ve kur
+1. [Python 3.10+](https://www.python.org/downloads/) — kurulumda **"Add Python to PATH"** işaretle
+2. [Git for Windows](https://git-scm.com/download/win) kur
 
 ```bat
-:: CMD veya PowerShell'de:
 git clone https://github.com/trs-1342/alms
 cd alms
 setup.bat
-```
-
-```bat
-:: Yeni terminal aç ve kurulumu tamamla:
 alms setup
 ```
 
-> **Not:** `alms` tanınmıyorsa (PATH henüz yüklenmedi):
-> ```bat
-> alms.bat setup
-> ```
+---
 
-> **Otomatik çalıştırma için** `setup.bat`'ı sağ tık → "Yönetici olarak çalıştır" ile çalıştırın.
+## Temel Kullanım
+
+```bash
+alms                # Menü
+alms sync           # Yeni dosyaları indir
+alms download       # Dosya seçerek indir
+alms obis --sinav   # Sınav takvimi
+alms update         # Güncelleme yükle
+alms --version      # Sürüm + güncelleme kontrolü
+```
+
+Tam kullanım rehberi: **[KULLANIM.md](KULLANIM.md)**
 
 ---
 
-## Kullanım
-
-### ALMS Komutları
+## Komut Özeti
 
 | Komut | Açıklama |
 |-------|----------|
 | `alms` | İnteraktif menü |
-| `alms setup` | İlk kurulum / yeniden yapılandırma |
+| `alms setup` | İlk kurulum |
 | `alms sync` | Yeni dosyaları indir |
-| `alms sync --courses FIZ108,YZM102` | Belirli dersleri indir |
-| `alms sync --force` | Tüm dosyaları yeniden indir |
+| `alms sync --courses FIZ108,MAT106` | Belirli dersleri indir |
+| `alms sync -f pdf` | Sadece PDF |
+| `alms sync --quiet` | Sessiz mod (otomasyon) |
+| `alms download` | Dosya seçici |
 | `alms list` | Dersleri listele |
-| `alms download` | Dosya seçerek indir |
 | `alms today` | Yaklaşan aktiviteler |
-| `alms open` | İndirme klasörünü aç |
-| `alms status` | Sistem durumu + OBİS oturum durumu |
-| `alms stats` | İndirme istatistikleri |
+| `alms status` | Sistem durumu |
+| `alms stats` | İstatistikler |
 | `alms log` | Aktivite logu |
-| `alms export` | Ders indexini Markdown/JSON olarak dışa aktar |
+| `alms export` | Ders indexini dışa aktar |
+| `alms open` | İndirme klasörünü aç |
+| `alms obis --setup` | OBİS oturumu kur |
+| `alms obis --sinav` | Sınav takvimi |
+| `alms obis notlar` | Ders notları |
+| `alms obis devamsizlik` | Devamsızlık |
 | `alms update` | Güncelleme yükle |
-| `alms --version` | Sürüm bilgisi + güncelleme var mı kontrol et |
-| `alms logout` | Kayıtlı kimlik bilgilerini sil |
+| `alms --version` | Sürüm bilgisi |
+| `alms logout` | Kimlik bilgilerini sil |
 
-### OBİS Komutları
+---
 
-| Komut | Açıklama |
-|-------|----------|
-| `alms obis --setup` | OBİS oturumu kur (bir kez yapılır) |
-| `alms obis --sinav` | Sınav tarihlerini göster |
-| `alms obis notlar` | Ders notlarını göster |
-| `alms obis devamsizlik` | Devamsızlık durumunu göster |
+## OBİS Kurulumu
 
-> **OBİS kurulumu:** Tarayıcıda OBİS'e giriş yaptıktan sonra
-> `F12 → Storage → Cookies → ASP.NET_SessionId` değerini kopyalayıp
-> `alms obis --setup` komutuna yapıştır.
-> Oturum kapanmadığı sürece token geçerli kalır.
-
-### Filtreler
+Tarayıcıda OBİS'e giriş yaptıktan sonra **bir kez** yapılır:
 
 ```bash
-alms sync --course FIZ108          # Tek ders
-alms sync --courses FIZ108,MAT106  # Birden fazla ders
-alms sync -f pdf                   # Sadece PDF
-alms sync -f video                 # Sadece video
-alms sync --week 7                 # Sadece 7. hafta
-alms sync --all                    # Manifest'i yoksay, hepsini indir
-alms sync --quiet                  # Sessiz mod (otomasyon için)
+alms obis --setup
+# F12 → Storage → Cookies → ASP.NET_SessionId değerini kopyala yapıştır
 ```
 
-### Dosya seçici (interaktif)
-
-`alms download` komutunda:
-
-```
-↑↓ hareket   SPACE seç   G grup seç   A hepsi   N temizle   F filtrele   ENTER onayla   Q iptal
-
-  ▶ FIZ108  2/18
-    ◉ W01  fizik_2_1_hafta.pdf         4.1 MB  ✓  (indirilmiş)
-    ● W07  Fizik_2_Bolum_6.pdf         4.8 MB     (seçili)
-    YZM102  0/4
-    ○ W04  Pointers2.pdf               0.3 MB
-```
-
-`F` tuşuyla dosya adı veya ders kodu ile filtrele. `ESC` filtreyi temizler.
+Oturum kapatılmadığı sürece token geçerli kalır.
 
 ---
 
 ## Otomatik İndirme
 
-`alms` menüsünden **[11] Otomatik Çalıştırma** ile ayarlanır:
-- Saat/dakika belirle
-- İndirilecek dersleri seç (boş = tüm dersler)
+Menüden **[12] Otomatik Çalıştırma** ile ayarlanır.
 
 | Platform | Yöntem |
 |----------|--------|
-| Linux | crontab + shell wrapper |
-| macOS | launchd .plist |
+| Linux | crontab |
+| macOS | launchd |
 | Windows | Task Scheduler |
-
-Log: `~/.config/alms/cron.log`
-
----
-
-## Güncelleme
-
-```bash
-alms update
-```
-
-Güncelleme sistemi şunları yapar:
-1. Config dosyalarını yedekler
-2. `git pull origin main`
-3. Bağımlılıkları günceller
-4. Otomasyonu yeniler
-5. Yedekleri temizler
-
-Hata durumunda otomatik rollback yapılır.
-
-Menü açılışında güncelleme varsa bildirim gösterilir:
-
-```
-⬆️  3 güncelleme mevcut  v1.4.0 → v1.5.0
-Şimdi güncellensin mi? [E/H]:
-```
 
 ---
 
 ## Güvenlik
 
-- Giriş bilgileri **AES-256** (Fernet) ile şifrelenir
-- Şifreleme anahtarı makineye özel — dosya başka bilgisayarda açılamaz
-- OBİS oturum tokeni şifreli saklanır
-- Config dizini `chmod 700`, dosyalar `chmod 600`
-- Token ve şifre log dosyasına yazılmaz
+- Kimlik bilgileri **AES-256** ile şifrelenir, makineye özel
+- OBİS token şifreli saklanır
 - SSL doğrulama her zaman açık
+- Token/şifre log dosyasına yazılmaz
+
+---
+
+## Güncelleme Sistemi
+
+```bash
+alms update
+```
+
+- Config dosyaları yedeklenir
+- `git pull` + bağımlılık güncellemesi
+- Hata durumunda otomatik rollback
+- Menü açılışında güncelleme varsa bildirim gösterilir
+
+Versiyon tag ile (`v1.5.0`) veya commit sayısından otomatik belirlenir.
 
 ---
 

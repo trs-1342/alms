@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).parent.parent
 
-# Sürüm bilgisi config dizininde tutulur — proje klasöründe değil
+
 def _version_file() -> Path:
     try:
         from utils.paths import CONFIG_DIR
@@ -22,14 +22,50 @@ def _version_file() -> Path:
     except Exception:
         return Path.home() / ".config" / "alms" / "version.json"
 
-# Repo içindeki version.txt sadece kaynak referansı olarak kalır (opsiyonel)
-_VERSION_TXT = _ROOT / "version.txt"
+
+# ── Git yardımcıları ──────────────────────────────────────────
+
+def _git(args: list, timeout: int = 5) -> str:
+    """Git komutu çalıştır, stdout döner. Hata → boş string."""
+    try:
+        r = subprocess.run(
+            ["git"] + args, cwd=_ROOT,
+            capture_output=True, text=True, timeout=timeout
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
 
 
-# ── Okuma ─────────────────────────────────────────────────────
+def _current_build() -> str:
+    """Mevcut commit hash (kısa)."""
+    return _git(["rev-parse", "--short", "HEAD"]) or "unknown"
 
-def _read_version_json() -> dict:
-    """~/.config/alms/version.json oku. Yoksa boş dict."""
+
+def _current_tag() -> str:
+    """En son git tag (v prefix'siz). Tag yoksa boş."""
+    tag = _git(["describe", "--tags", "--abbrev=0"])
+    return tag.lstrip("v") if tag else ""
+
+
+def _remote_tag() -> str:
+    """origin/main üzerindeki en son tag. Tag yoksa boş."""
+    tag = _git(["describe", "--tags", "--abbrev=0", "origin/main"])
+    return tag.lstrip("v") if tag else ""
+
+
+def _commits_behind() -> int:
+    """origin/main'e göre kaç commit gerideyiz."""
+    out = _git(["rev-list", "--count", "HEAD..origin/main"])
+    try:
+        return int(out)
+    except ValueError:
+        return 0
+
+
+# ── version.json okuma/yazma ──────────────────────────────────
+
+def _read() -> dict:
     vf = _version_file()
     if vf.exists():
         try:
@@ -39,84 +75,66 @@ def _read_version_json() -> dict:
     return {}
 
 
+def _write(data: dict):
+    vf = _version_file()
+    vf.parent.mkdir(parents=True, exist_ok=True)
+    vf.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        vf.chmod(0o600)
+    except Exception:
+        pass  # Windows'ta chmod yok
+    get_current_version.cache_clear()
+
+
+# ── Public API ────────────────────────────────────────────────
+
 @lru_cache(maxsize=1)
 def get_current_version() -> str:
     """
     Mevcut sürümü döner.
-    Öncelik: version.json → version.txt → git tag → git hash → "unknown"
+    Öncelik: version.json → git tag → git hash → "unknown"
     """
-    # 1. ~/.config/alms/version.json
-    data = _read_version_json()
+    data = _read()
     if data.get("version"):
         return data["version"]
 
-    # 2. Repo içindeki version.txt (fallback)
-    if _VERSION_TXT.exists():
-        v = _VERSION_TXT.read_text().strip()
-        if v:
-            return v
+    tag = _current_tag()
+    if tag:
+        return tag
 
-    # 3. git tag
-    try:
-        r = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            cwd=_ROOT, capture_output=True, text=True, timeout=5
-        )
-        if r.returncode == 0:
-            return r.stdout.strip().lstrip("v")
-    except Exception:
-        pass
-
-    # 4. git hash
-    try:
-        r = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=_ROOT, capture_output=True, text=True, timeout=5
-        )
-        if r.returncode == 0:
-            return f"dev-{r.stdout.strip()}"
-    except Exception:
-        pass
-
-    return "unknown"
+    build = _current_build()
+    return f"dev-{build}" if build != "unknown" else "unknown"
 
 
 def get_version_info() -> dict:
-    """Tam sürüm bilgisini döner (version, updated_at, changelog)."""
-    return _read_version_json()
+    """Tam sürüm bilgisi: version, build, updated_at, changelog."""
+    data = _read()
+    # build her zaman güncel olsun
+    if not data.get("build"):
+        data["build"] = _current_build()
+    return data
 
 
-# ── Yazma ─────────────────────────────────────────────────────
-
-def save_version(version: str, changelog: str = ""):
-    """
-    Yeni sürümü ~/.config/alms/version.json'a kaydeder.
-    Güncelleme sonrası çağrılır.
-    """
+def init_version_if_missing():
+    """İlk kurulumda version.json yoksa oluşturur."""
     vf = _version_file()
-    vf.parent.mkdir(parents=True, exist_ok=True)
+    if vf.exists():
+        return
+    tag = _current_tag()
+    ver = tag if tag else "1.4.0"
+    save_version(ver, _current_build(), "İlk kurulum")
 
+
+def save_version(version: str, build: str = "", changelog: str = ""):
+    """version.json'u günceller. Güncelleme sonrası çağrılır."""
     data = {
         "version":    version,
+        "build":      build or _current_build(),
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "changelog":  changelog,
     }
-    vf.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    vf.chmod(0o600)
-
-    # lru_cache'i temizle — yeni sürüm okunabilsin
-    get_current_version.cache_clear()
-    log.debug("Sürüm kaydedildi: %s", version)
-
-
-def init_version_if_missing(version: str = "1.4.0"):
-    """
-    İlk kurulumda version.json yoksa oluşturur.
-    alms setup veya uygulama ilk başlangıcında çağrılır.
-    """
-    vf = _version_file()
-    if not vf.exists():
-        save_version(version, "İlk kurulum")
+    _write(data)
+    log.debug("Sürüm kaydedildi: v%s (%s)", version, data["build"])
 
 
 # ── Güncelleme kontrolü ───────────────────────────────────────
@@ -125,35 +143,22 @@ def check_update_available() -> tuple[bool, int, str]:
     """
     Uzak repo'da güncelleme var mı kontrol eder.
     Döner: (var_mi, commit_sayisi, uzak_versiyon)
-
-    Ağ/git hatasında (False, 0, "") döner — sessiz başarısız.
+    Ağ hatasında (False, 0, "") döner — sessiz başarısız.
     """
     try:
-        fetch = subprocess.run(
+        # fetch — ağ isteği
+        r = subprocess.run(
             ["git", "fetch", "origin", "main", "--dry-run"],
             cwd=_ROOT, capture_output=True, timeout=8
         )
-        if fetch.returncode != 0:
+        if r.returncode != 0:
             return False, 0, ""
 
-        behind = subprocess.run(
-            ["git", "rev-list", "--count", "HEAD..origin/main"],
-            cwd=_ROOT, capture_output=True, text=True, timeout=5
-        )
-        if behind.returncode != 0:
-            return False, 0, ""
-
-        count = int(behind.stdout.strip() or "0")
+        count = _commits_behind()
         if count == 0:
             return False, 0, ""
 
-        # Uzaktaki son tag
-        remote_tag = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0", "origin/main"],
-            cwd=_ROOT, capture_output=True, text=True, timeout=5
-        )
-        remote_ver = remote_tag.stdout.strip().lstrip("v") if remote_tag.returncode == 0 else ""
-
+        remote_ver = _remote_tag()
         return True, count, remote_ver
 
     except Exception as e:
