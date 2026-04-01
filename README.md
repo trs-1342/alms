@@ -167,4 +167,5 @@ MIT
 
 ## Geliştirici
 
-https://hattab.vercel.app
+[My Web Site](https://hattab.vercel.app)
+[GitHub](https://github.com/trs-1342)
