@@ -164,3 +164,7 @@ beautifulsoup4>=4.12.0,<5.0.0
 ## Lisans
 
 MIT
+
+## Geliştirici
+
+https://hattab.vercel.app
