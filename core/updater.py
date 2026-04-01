@@ -48,17 +48,28 @@ def _git(args: list, timeout: int = 60) -> tuple[bool, str]:
     try:
         r = subprocess.run(
             ["git"] + args, cwd=_ROOT,
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True, timeout=timeout
         )
-        out = (r.stdout + r.stderr).strip()
+        out = (
+            r.stdout.decode("utf-8", errors="replace") +
+            r.stderr.decode("utf-8", errors="replace")
+        ).strip()
         return r.returncode == 0, out
     except Exception as e:
         return False, str(e)
 
 
 def _git_out(args: list, timeout: int = 5) -> str:
-    ok, out = _git(args, timeout)
-    return out.strip() if ok else ""
+    try:
+        r = subprocess.run(
+            ["git"] + args, cwd=_ROOT,
+            capture_output=True, timeout=timeout
+        )
+        # encoding='utf-8' + errors='replace' — Windows cp1252 bozulmasını önler
+        out = r.stdout.decode("utf-8", errors="replace").strip()
+        return out if r.returncode == 0 else ""
+    except Exception:
+        return ""
 
 
 def _git_stash() -> bool:

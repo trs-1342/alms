@@ -30,9 +30,10 @@ def _git(args: list, timeout: int = 5) -> str:
     try:
         r = subprocess.run(
             ["git"] + args, cwd=_ROOT,
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True, timeout=timeout
         )
-        return r.stdout.strip() if r.returncode == 0 else ""
+        out = r.stdout.decode("utf-8", errors="replace").strip()
+        return out if r.returncode == 0 else ""
     except Exception:
         return ""
 
