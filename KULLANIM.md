@@ -1,4 +1,4 @@
-> 🇹🇷 **Türkçe** &nbsp;|&nbsp; 🇬🇧 [English](USAGE.md)
+> 🇹🇷 **Türkçe** &nbsp;|&nbsp; 🇬🇧 [English](https://github.com/trs-1342/alms/blob/main/USAGE.md)
 
 ---
 

@@ -1,4 +1,4 @@
-> 🇹🇷 **Türkçe** &nbsp;|&nbsp; 🇬🇧 [English](README.en.md)
+> 🇹🇷 **Türkçe** &nbsp;|&nbsp; 🇬🇧 [English](https://github.com/trs-1342/alms/blob/main/README.en.md)
 
 ---
 
@@ -193,7 +193,7 @@ alms update         # Güncelleme yükle
 alms --version      # Sürüm + güncelleme kontrolü
 ```
 
-Tam kullanım rehberi: **[KULLANIM.md](KULLANIM.md)**
+Tam kullanım rehberi: **[KULLANIM.md](https://github.com/trs-1342/alms/blob/main/KULLANIM.md)**
 
 ---
 
