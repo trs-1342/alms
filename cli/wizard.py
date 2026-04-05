@@ -547,6 +547,10 @@ def _setup_path_unix(script: Path):
         venv_py = Path(sys.executable)
 
     try:
+        # Eski symlink veya dosyayı önce sil — write_text() symlink'i takip eder,
+        # sil meden yazarsa hedef dosyanın (alms.py) üzerine yazar!
+        if wrapper.is_symlink() or wrapper.exists():
+            wrapper.unlink()
         wrapper.write_text(
             f'#!/usr/bin/env bash\nexec "{venv_py}" "{script}" "$@"\n'
         )

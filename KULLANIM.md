@@ -1,3 +1,7 @@
+> 🇹🇷 **Türkçe** &nbsp;|&nbsp; 🇬🇧 [English](USAGE.md)
+
+---
+
 # ALMS İndirici — Kullanım Rehberi
 
 ---
@@ -35,6 +39,14 @@ Tekrar çalıştırıldığında yeniden yapılandırma seçenekleri sunar.
 ---
 
 ### `alms sync` — Senkronizasyon
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 2 — Sync progress bar ekran görüntüsü
+     Çekilecek yer : alms sync çalışırken █████░░ bar görünürken
+     Dosya         : assets/foto-2.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Sync Progress](assets/foto-2.png)
+
 ```
 alms sync                              # Yeni dosyaları indir
 alms sync --course FIZ108              # Tek ders
@@ -151,6 +163,14 @@ Format seçimi: Markdown veya JSON.
 ---
 
 ### `alms obis` — OBİS Entegrasyonu
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 3 — Sınav takvimi ekran görüntüsü
+     Çekilecek yer : alms obis --sinav çıktısı (tarih + saat listesi)
+     Dosya         : assets/foto-3.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Sınav Takvimi](assets/foto-3.png)
+
 ```
 alms obis --setup              # OBİS oturumu kur (bir kez yapılır)
 alms obis --setup --force      # Oturumu zorla yenile
@@ -206,15 +226,15 @@ alms --version
 ```
 Örnek çıktı:
 ```
-  ALMS İndirici v1.4.0 (build: ea4674a)
-  Güncellendi : 2026-03-30
-  Değişiklik  : OBİS entegrasyonu, güvenlik düzeltmeleri
+  ALMS İndirici v2.0.0 (build: ea4674a)
+  Güncellendi : 2026-04-05
+  Değişiklik  : çapraz platform düzeltmeleri, otomatik kurulum
   Güncelleme kontrol ediliyor...
   ✅ Güncel
 ```
 Güncelleme varsa:
 ```
-  ⬆️  3 güncelleme mevcut → v1.5.0 — yüklemek için: alms update
+  ⬆️  3 güncelleme mevcut → v2.1.0 — yüklemek için: alms update
 ```
 
 ---
@@ -250,7 +270,7 @@ Mevcut ayarları JSON formatında gösterir (hassas bilgiler gizlenir).
 Menü her açıldığında arka planda güncelleme kontrol edilir.
 Güncelleme varsa menü görünmeden önce sorulur:
 ```
-⬆️  3 güncelleme mevcut  v1.4.0 → v1.5.0
+⬆️  3 güncelleme mevcut  v2.0.0 → v2.1.0
 Şimdi güncellensin mi? [E/H]:
 ```
 
@@ -259,19 +279,21 @@ Güncelleme varsa menü görünmeden önce sorulur:
 ## Dosya Yapısı
 
 ```
-~/ALMS/                          # İndirme klasörü
+~/ALMS/                                      # İndirme klasörü
 ├── FIZ108/
 │   ├── Hafta_01/
 │   └── Hafta_07/
 └── YZM102/
 
-~/.config/alms/                  # Config (Linux/macOS)
-%APPDATA%\alms\                  # Config (Windows)
+~/.config/alms/                              # Config (Linux)
+~/Library/Application Support/alms/         # Config (macOS)
+%APPDATA%\alms\                              # Config (Windows)
 ├── credentials.enc              # Şifreli kimlik bilgileri
 ├── config.json                  # Ayarlar
 ├── manifest.json                # İndirilen dosya kaydı
 ├── version.json                 # Sürüm bilgisi
 ├── obis_session                 # Şifreli OBİS tokeni
+├── alms.log                     # Uygulama logu
 └── cron.log                     # Otomasyon logu
 ```
 
@@ -308,14 +330,12 @@ source ~/.zshrc
 
 **macOS — `alms` çalışıyor ama paket hatası (requests, cryptography):**
 ```bash
-# Sembolik link yerine venv wrapper kullanılmıyor olabilir
-# setup.sh yeniden çalıştırın:
+# Venv wrapper eksik olabilir, setup.sh yeniden çalıştırın:
 ./setup.sh
 ```
 
 **macOS — kurulum sonrası lock dosyası kilitli:**
 ```bash
-rm ~/.config/alms/.alms.lock 2>/dev/null
 rm ~/Library/Application\ Support/alms/.alms.lock 2>/dev/null
 ```
 
@@ -333,7 +353,7 @@ alms setup
 **Güncelleme başarısız:**
 ```bash
 # Manuel güncelleme
-cd ~/trs/github/alms   # proje klasörü
+cd /path/to/alms   # proje klasörü
 git pull origin main
 .venv/bin/python -m pip install -r requirements.txt
 ```

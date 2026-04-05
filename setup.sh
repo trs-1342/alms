@@ -245,6 +245,10 @@ chmod +x "$SCRIPT_DIR/alms.py"
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 
+# Eski symlink varsa önce kaldır — cat > symlink'i takip eder,
+# kaldırılmazsa hedef dosyanın (alms.py) üzerine yazar!
+[ -L "$BIN_DIR/alms" ] && rm -f "$BIN_DIR/alms"
+
 cat > "$BIN_DIR/alms" << WRAPPER
 #!/usr/bin/env bash
 exec "$PY" "$SCRIPT_DIR/alms.py" "\$@"

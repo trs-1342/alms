@@ -1,7 +1,20 @@
+> 🇹🇷 **Türkçe** &nbsp;|&nbsp; 🇬🇧 [English](README.en.md)
+
+---
+
 # ALMS İndirici
 
 IGU (İstanbul Gelişim Üniversitesi) ALMS ve OBİS sistemlerine tek komutla erişim.
 Ders materyallerini otomatik indirir, sınav tarihlerini gösterir.
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 1 — Ana menü ekran görüntüsü
+     Çekilecek yer : terminalde sadece  alms  komutunu çalıştırın
+     Dosya         : assets/foto-1.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Ana Menü](assets/foto-1.png)
+
+---
 
 ```
 ~/ALMS/
@@ -257,7 +270,7 @@ alms update
 - Hata durumunda otomatik rollback
 - Menü açılışında güncelleme varsa bildirim gösterilir
 
-Versiyon tag ile (`v1.5.0`) veya commit sayısından otomatik belirlenir.
+Versiyon tag ile (`v2.0`) veya commit sayısından otomatik belirlenir.
 
 ---
 
