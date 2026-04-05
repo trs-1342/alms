@@ -243,7 +243,7 @@ Mevcut ayarları JSON formatında gösterir (hassas bilgiler gizlenir).
 | Platform | Yöntem | Log |
 |----------|--------|-----|
 | Linux | crontab | `~/.config/alms/cron.log` |
-| macOS | launchd | `~/.config/alms/cron.log` |
+| macOS | launchd | `~/Library/Application Support/alms/cron.log` |
 | Windows | Task Scheduler | `%APPDATA%\alms\cron.log` |
 
 **Otomatik çalışmada güncelleme kontrolü:**
@@ -293,11 +293,30 @@ Güncelleme varsa menü görünmeden önce sorulur:
 
 **`alms` komutu tanınmıyor:**
 ```bash
-# Linux/macOS
-source ~/.bashrc   # veya ~/.zshrc
+# macOS (zsh)
+source ~/.zprofile   # veya yeni terminal
+
+# Linux (bash)
+source ~/.bashrc
+
+# Linux (zsh)
+source ~/.zshrc
 
 # Windows
-# Yeni terminal aç
+# Yeni CMD veya PowerShell penceresi aç
+```
+
+**macOS — `alms` çalışıyor ama paket hatası (requests, cryptography):**
+```bash
+# Sembolik link yerine venv wrapper kullanılmıyor olabilir
+# setup.sh yeniden çalıştırın:
+./setup.sh
+```
+
+**macOS — kurulum sonrası lock dosyası kilitli:**
+```bash
+rm ~/.config/alms/.alms.lock 2>/dev/null
+rm ~/Library/Application\ Support/alms/.alms.lock 2>/dev/null
 ```
 
 **OBİS oturumu sona erdi:**
@@ -314,12 +333,17 @@ alms setup
 **Güncelleme başarısız:**
 ```bash
 # Manuel güncelleme
-cd ~/trs/github/alms
+cd ~/trs/github/alms   # proje klasörü
 git pull origin main
-pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
-**Bağımlılık eksik:**
+**Linux — bağımlılık eksik:**
 ```bash
-pip install -r requirements.txt --break-system-packages
+.venv/bin/pip install -r requirements.txt
+```
+
+**Windows — bağımlılık eksik:**
+```bat
+.venv\Scripts\pip.exe install -r requirements.txt
 ```

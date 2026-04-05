@@ -61,8 +61,12 @@ def _acquire_lock() -> bool:
         if LOCK_FILE.exists():
             try:
                 old_pid = int(LOCK_FILE.read_text().strip())
-                if not Path(f"/proc/{old_pid}").exists():
-                    LOCK_FILE.unlink(missing_ok=True)
+                try:
+                    os.kill(old_pid, 0)  # 0 sinyali: process var mı? (POSIX — Linux + macOS)
+                except ProcessLookupError:
+                    LOCK_FILE.unlink(missing_ok=True)  # process yok, eski lock temizle
+                except PermissionError:
+                    pass  # process var ama izin yok — lock geçerli
             except Exception:
                 LOCK_FILE.unlink(missing_ok=True)
         try:

@@ -531,17 +531,36 @@ def _setup_path():
 
 
 def _setup_path_unix(script: Path):
-    import os
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
-    link = bin_dir / "alms"
+    wrapper = bin_dir / "alms"
+
+    # Venv Python'ını bul (symlink değil wrapper — sistem Python değil venv kullanılsın)
+    for candidate in [
+        script.parent / ".venv" / "bin" / "python",
+        script.parent / ".venv" / "bin" / "python3",
+    ]:
+        if candidate.exists():
+            venv_py = candidate
+            break
+    else:
+        venv_py = Path(sys.executable)
+
     try:
-        if link.exists() or link.is_symlink():
-            link.unlink()
-        link.symlink_to(script)
-        script.chmod(0o755)
-        print(f"  ✅ PATH'e eklendi: {link}")
-        for profile in [".zshrc", ".bashrc", ".profile"]:
+        wrapper.write_text(
+            f'#!/usr/bin/env bash\nexec "{venv_py}" "{script}" "$@"\n'
+        )
+        wrapper.chmod(0o755)
+        print(f"  ✅ alms komutu oluşturuldu: {wrapper}")
+
+        # macOS: login shell .zprofile okur (Terminal.app); Linux: .zshrc / .bashrc
+        is_macos = platform.system() == "Darwin"
+        if is_macos:
+            profiles = [".zprofile", ".zshrc", ".bash_profile", ".bashrc", ".profile"]
+        else:
+            profiles = [".zshrc", ".bashrc", ".profile"]
+
+        for profile in profiles:
             pfile = Path.home() / profile
             if pfile.exists():
                 if ".local/bin" not in pfile.read_text():
@@ -567,7 +586,9 @@ def _setup_path_windows(script: Path):
             winreg.SetValueEx(key, "PATH", 0, winreg.REG_EXPAND_SZ, new_path)
             print(f"  ✅ PATH'e eklendi: {script_dir}")
         bat = script.parent / "alms.bat"
-        bat.write_text("@echo off\n" + f'"{sys.executable}" "{script}" %*\n')
+        venv_py = script.parent / ".venv" / "Scripts" / "python.exe"
+        py_exe = str(venv_py) if venv_py.exists() else sys.executable
+        bat.write_text(f'@echo off\n"{py_exe}" "{script}" %*\n')
         print(f"  ✅ alms.bat oluşturuldu.")
     except Exception as e:
         print(f"  ⚠️  PATH eklenemedi: {e}")

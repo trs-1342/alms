@@ -47,7 +47,8 @@ def _write_wrapper(courses: list[str] | None = None) -> Path:
     - Lock mekanizması
     """
     course_args = (f" --courses {shlex.quote(','.join(courses))}" if courses else "")
-    log_file    = Path.home() / ".config" / "alms" / "cron.log"
+    from utils.paths import CONFIG_DIR
+    log_file = CONFIG_DIR / "cron.log"
     home        = Path.home()
 
     script = f"""#!/bin/bash
@@ -252,8 +253,6 @@ PLIST_TEMPLATE = """\
     <key>Minute</key>
     <integer>{minute}</integer>
   </dict>
-  <key>RunAtLoad</key>
-  <true/>
   <key>StandardOutPath</key>
   <string>{log}</string>
   <key>StandardErrorPath</key>
