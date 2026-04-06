@@ -216,9 +216,13 @@ Tam kullanım rehberi: **[KULLANIM.md](https://github.com/trs-1342/alms/blob/mai
 | `alms export` | Ders indexini dışa aktar |
 | `alms open` | İndirme klasörünü aç |
 | `alms obis --setup` | OBİS oturumu kur |
-| `alms obis --sinav` | Sınav takvimi |
-| `alms obis notlar` | Ders notları |
-| `alms obis devamsizlik` | Devamsızlık |
+| `alms obis sinav` | Sınav takvimi |
+| `alms obis notlar` | Ders notları (ödev/vize/final/harf) |
+| `alms obis transkript` | Transkript + ANO/GANO |
+| `alms obis program` | Haftalık ders programı |
+| `alms obis devamsizlik` | Devamsızlık durumu |
+| `alms obis duyurular` | OBİS duyuruları (tam içerik) |
+| `alms takvim` | ALMS zaman çizelgesi |
 | `alms update` | Güncelleme yükle |
 | `alms --version` | Sürüm bilgisi |
 | `alms logout` | Kimlik bilgilerini sil |
@@ -240,7 +244,7 @@ Oturum kapatılmadığı sürece token geçerli kalır.
 
 ## Otomatik İndirme
 
-Menüden **[12] Otomatik Çalıştırma** ile ayarlanır.
+Menüden **[16] Otomatik Çalıştırma** ile ayarlanır.
 
 | Platform | Yöntem | Log |
 |----------|--------|-----|
@@ -292,5 +296,5 @@ MIT
 
 ## Geliştirici
 
-[My Web Site](https://hattab.vercel.app)
+[My Web Site](https://hattab.vercel.app) <br/>
 [GitHub](https://github.com/trs-1342)

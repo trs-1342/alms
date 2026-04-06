@@ -39,6 +39,10 @@ TR = {
     "opt_auto":      "Otomatik Çalıştırma",
     "opt_exit":      "Çıkış",
     "opt_sinav":     "Sınav Takvimi",
+    "opt_transkript": "Transkript & Not Ortalaması",
+    "opt_program":   "Ders Programı",
+    "opt_duyurular": "Duyurular (OBİS + LMS)",
+    "opt_takvim":    "Zaman Çizelgesi",
     "choose":        "Seçiminiz",
     "back":          "Geri",
     "invalid":       "Geçersiz seçim.",
@@ -80,6 +84,10 @@ EN = {
     "opt_auto":      "Auto Run",
     "opt_exit":      "Exit",
     "opt_sinav":     "Exam Schedule",
+    "opt_transkript": "Transcript & GPA",
+    "opt_program":   "Course Schedule",
+    "opt_duyurular": "Announcements",
+    "opt_takvim":    "Timeline",
     "choose":        "Your choice",
     "back":          "Back",
     "invalid":       "Invalid choice.",
@@ -215,9 +223,11 @@ def yn(prompt, default=True):
 
 
 def pause():
+    if not sys.stdin.isatty():
+        return  # non-TTY ortamda (pipe, script, test) sessizce geç
     try:
         input(f"\n  {dim(_t('press_enter'))}")
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         pass
 
 
@@ -804,6 +814,66 @@ def screen_status(token, username):
     pause()
 
 
+# ─── Transkript ───────────────────────────────────────────────
+def screen_transkript():
+    header(_t("opt_transkript"))
+    try:
+        from core.obis import get_session, get_transkript, print_transkript
+    except ImportError as e:
+        print(f"  ⚠  Modül yüklenemedi: {e}")
+        pause(); return
+    session = get_session()
+    if not session:
+        pause(); return
+    with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Transkript yükleniyor..."):
+        data = get_transkript(session)
+    print_transkript(data)
+    pause()
+
+
+# ─── Ders Programı ────────────────────────────────────────────
+def screen_program():
+    header(_t("opt_program"))
+    try:
+        from core.obis import get_session, get_ders_programi, print_ders_programi
+    except ImportError as e:
+        print(f"  ⚠  Modül yüklenemedi: {e}")
+        pause(); return
+    session = get_session()
+    if not session:
+        pause(); return
+    with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Ders programı yükleniyor..."):
+        dersler = get_ders_programi(session)
+    print_ders_programi(dersler)
+    pause()
+
+
+# ─── Duyurular ────────────────────────────────────────────────
+def screen_duyurular(token: str):
+    header(_t("opt_duyurular"))
+    try:
+        from core.obis import get_session, get_obis_duyurular, get_lms_duyurular, print_duyurular
+    except ImportError as e:
+        print(f"  ⚠  Modül yüklenemedi: {e}")
+        pause(); return
+    session = get_session()
+    obis_d, lms_d = [], []
+    with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Duyurular yükleniyor..."):
+        if session:
+            obis_d = get_obis_duyurular(session)
+        if token:
+            lms_d = get_lms_duyurular(token)
+    print_duyurular(obis_d, lms_d)
+    pause()
+
+
+# ─── Zaman Çizelgesi ──────────────────────────────────────────
+def screen_takvim(token: str):
+    # LMS web UI farklı auth sistemi kullandığından scraping çalışmıyor.
+    # ALMS API üzerinden çalışan screen_today kullanılıyor.
+    screen_today(token)
+
+
 # ─── Ayarlar ──────────────────────────────────────────────────
 def screen_settings():
     from core import config as cfg
@@ -1271,19 +1341,22 @@ def run_main_menu(token, username):
         _check_and_prompt_update()
 
         opts = [
-            _t("opt_list"),           # 1
-            _t("opt_download"),       # 2
-            _t("opt_sync"),           # 3
-            _t("opt_today"),          # 4
-            _t("opt_open"),           # 5
-            _t("opt_status"),         # 6
-            "İstatistikler",          # 7
-            "Aktivite Logu",          # 8
-            "Dışa Aktar",             # 9
-            _t("opt_sinav"),          # 10  ← YENİ
-            _t("opt_settings"),       # 11
-            _t("opt_auto"),           # 12
-            red(_t("opt_exit")),      # 13
+            _t("opt_list"),            # 1
+            _t("opt_download"),        # 2
+            _t("opt_sync"),            # 3
+            _t("opt_today"),           # 4
+            _t("opt_open"),            # 5
+            _t("opt_status"),          # 6
+            "İstatistikler",           # 7
+            "Aktivite Logu",           # 8
+            "Dışa Aktar",              # 9
+            _t("opt_sinav"),           # 10
+            _t("opt_transkript"),      # 11
+            _t("opt_program"),         # 12
+            _t("opt_duyurular"),       # 13
+            _t("opt_settings"),        # 14
+            _t("opt_auto"),            # 15
+            red(_t("opt_exit")),       # 16
         ]
         idx = menu(opts)
 
@@ -1338,11 +1411,17 @@ def run_main_menu(token, username):
             screen_log()
         elif idx == 8:
             cmd_export(token)
-        elif idx == 9:                # ← Sınav Takvimi
+        elif idx == 9:
             screen_sinav()
         elif idx == 10:
-            screen_settings()
+            screen_transkript()
         elif idx == 11:
+            screen_program()
+        elif idx == 12:
+            screen_duyurular(token)
+        elif idx == 13:
+            screen_settings()
+        elif idx == 14:
             screen_auto(token)
         else:
             break

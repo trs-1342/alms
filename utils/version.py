@@ -109,10 +109,10 @@ def get_current_version() -> str:
     if tag:
         patch = _git(["rev-list", "--count", f"v{tag}..HEAD"])
         if patch.isdigit():
-            parts = tag.split(".")
+            parts = tag.lstrip("v").split(".")
             major_minor = ".".join(parts[:2]) if len(parts) >= 2 else tag
             return f"{major_minor}.{patch}"
-        return tag
+        return _ensure_patch(tag)
 
     # 3. Commit hash fallback
     build = _current_build()
@@ -132,10 +132,27 @@ def init_version_if_missing():
     """İlk kurulumda version.json yoksa oluşturur."""
     vf = _version_file()
     if vf.exists():
+        # Mevcut versiyonu kontrol et — PATCH eksikse tamamla
+        try:
+            data = _read()
+            ver = data.get("version", "")
+            if ver and len(ver.split(".")) < 3:
+                data["version"] = _ensure_patch(ver)
+                _write(data)
+        except Exception:
+            pass
         return
     tag = _current_tag()
-    ver = tag if tag else "1.4.0"
+    ver = _ensure_patch(tag if tag else "1.4.0")
     save_version(ver, _current_build(), "İlk kurulum")
+
+
+def _ensure_patch(ver: str) -> str:
+    """Versiyon string'ini MAJOR.MINOR.PATCH formatına tamamlar."""
+    parts = ver.lstrip("v").split(".")
+    while len(parts) < 3:
+        parts.append("0")
+    return ".".join(parts)
 
 
 def save_version(version: str, build: str = "", changelog: str = ""):

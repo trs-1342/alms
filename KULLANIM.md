@@ -174,10 +174,16 @@ Format seçimi: Markdown veya JSON.
 ```
 alms obis --setup              # OBİS oturumu kur (bir kez yapılır)
 alms obis --setup --force      # Oturumu zorla yenile
-alms obis --sinav              # Sınav tarihlerini göster
-alms obis sinav                # Aynı
-alms obis notlar               # Ders notlarını göster
-alms obis devamsizlik          # Devamsızlık durumunu göster
+alms obis sinav                # Sınav tarihleri (varsayılan)
+alms obis notlar               # Ders notları: ödev/vize/final/harf
+alms obis transkript           # Transkript + ANO ve GANO ortalaması
+alms obis program              # Haftalık ders programı
+alms obis devamsizlik          # Devamsızlık (limite yakınsa kırmızı uyarı)
+alms obis duyurular            # OBİS duyuruları (tam içerik gösterir)
+alms takvim                    # ALMS zaman çizelgesi (ödev, sınav)
+alms duyurular                 # Duyurular kısayolu
+alms transkript                # Transkript kısayolu
+alms program                   # Ders programı kısayolu
 ```
 
 **OBİS kurulumu:**
@@ -258,7 +264,7 @@ Mevcut ayarları JSON formatında gösterir (hassas bilgiler gizlenir).
 
 ## Otomatik İndirme
 
-`alms` menüsünden **[12] Otomatik Çalıştırma** ile ayarlanır.
+`alms` menüsünden **[16] Otomatik Çalıştırma** ile ayarlanır.
 
 | Platform | Yöntem | Log |
 |----------|--------|-----|

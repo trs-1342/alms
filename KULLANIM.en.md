@@ -174,10 +174,16 @@ Output: `~/ALMS/alms_index_DATE.md` or `.json`
 ```
 alms obis --setup              # Set up OBIS session (done once)
 alms obis --setup --force      # Force session refresh
-alms obis --sinav              # View exam schedule
-alms obis sinav                # Same
-alms obis notlar               # View course grades
-alms obis devamsizlik          # View attendance
+alms obis sinav                # Exam schedule (default)
+alms obis notlar               # Course grades: assignments/midterm/final/letter
+alms obis transkript           # Full transcript + semester GPA and cumulative GPA
+alms obis program              # Weekly course schedule
+alms obis devamsizlik          # Attendance (red warning when near limit)
+alms obis duyurular            # OBIS announcements (full content)
+alms takvim                    # ALMS activity timeline (assignments, exams)
+alms duyurular                 # Shortcut: announcements screen
+alms transkript                # Shortcut: transcript screen
+alms program                   # Shortcut: course schedule screen
 ```
 
 **OBIS setup:**
@@ -258,7 +264,7 @@ Displays current settings in JSON format (sensitive values hidden).
 
 ## Automatic Downloads
 
-Configure via menu option **[12] Auto-run**.
+Configure via menu option **[16] Auto-run**.
 
 | Platform | Method | Log |
 |----------|--------|-----|

@@ -2,21 +2,61 @@
 """
 alms.py — ALMS İndirici Ana Giriş Noktası
 ──────────────────────────────────────────
-Kullanım:
-  alms                   → interaktif menü
-  alms setup             → ilk kurulum sihirbazı
-  alms sync              → yeni dosyaları indir (sessiz)
-  alms sync --quiet      → cron/scheduler için
-  alms list              → dersleri listele
-  alms download          → interaktif indirme
-  alms status            → sistem durumu
-  alms logout            → kimlik bilgilerini sil
-  alms config            → ayarları göster
-  alms obis              → sınav tarihleri
-  alms obis --setup      → OBİS oturum kurulumu
-  alms obis notlar       → ders notları
-  alms obis devamsizlik  → devamsızlık
-  alms --help / -h       → yardım
+
+── Temel Komutlar ──────────────────────────────────────
+  alms                            → interaktif menü
+  alms setup                      → ilk kurulum sihirbazı
+  alms sync                       → yeni dosyaları indir
+  alms sync --quiet               → sessiz mod (cron/otomasyon)
+  alms sync --course FIZ108       → tek ders indir
+  alms sync --courses FIZ108,MAT106  → birden fazla ders
+  alms sync -f pdf                → sadece PDF
+  alms sync -f video              → sadece video
+  alms sync --week 7              → sadece 7. hafta
+  alms sync --all / --force       → tümünü yeniden indir
+  alms list                       → ders listesi
+  alms download                   → interaktif dosya seçici
+  alms today                      → yaklaşan aktiviteler
+  alms open                       → indirme klasörünü aç
+  alms status                     → sistem durumu + sürüm
+  alms stats                      → indirme istatistikleri
+  alms log                        → aktivite logu
+  alms export                     → ders indexini dışa aktar
+
+── OBİS / LMS Komutları ────────────────────────────────
+  alms obis --setup               → OBİS oturum kurulumu
+  alms obis --setup --force       → oturumu zorla yenile
+  alms obis sinav                 → sınav tarihleri (varsayılan)
+  alms obis notlar                → ders notları (ödev/vize/final/harf)
+  alms obis transkript            → transkript + ANO/GANO
+  alms obis program               → haftalık ders programı
+  alms obis devamsizlik           → devamsızlık durumu
+  alms obis duyurular             → OBİS + LMS duyurular
+  alms takvim                     → LMS zaman çizelgesi (ödev/sınav)
+  alms duyurular                  → kısayol: duyurular ekranı
+  alms transkript                 → kısayol: transkript ekranı
+  alms program                    → kısayol: ders programı ekranı
+
+── Güncelleme & Sistem ─────────────────────────────────
+  alms update                     → güncelleme yükle
+  alms --version                  → sürüm + güncelleme kontrolü
+  alms logout                     → kimlik bilgilerini sil
+  alms config                     → mevcut ayarları göster
+  alms --help / -h                → bu yardım
+
+── Filtreler ────────────────────────────────────────────
+  -v / --verbose                  → ayrıntılı log
+  -q / --quiet                    → sadece hata (cron için)
+  -f {pdf,video}                  → dosya tipi filtresi
+  --course KOD                    → ders kodu filtresi
+  --courses KOD1,KOD2             → çoklu ders filtresi
+  --week N                        → hafta filtresi
+  --all / --force                 → tümünü yeniden indir
+
+── OBİS Kurulum Notu ────────────────────────────────────
+  1. obis.gelisim.edu.tr adresine tarayıcıda giriş yap
+  2. F12 → Storage → Cookies → ASP.NET_SessionId kopyala
+  3. alms obis --setup komutu ile yapıştır
 """
 
 import argparse
@@ -61,12 +101,8 @@ def _acquire_lock() -> bool:
         if LOCK_FILE.exists():
             try:
                 old_pid = int(LOCK_FILE.read_text().strip())
-                try:
-                    os.kill(old_pid, 0)  # 0 sinyali: process var mı? (POSIX — Linux + macOS)
-                except ProcessLookupError:
-                    LOCK_FILE.unlink(missing_ok=True)  # process yok, eski lock temizle
-                except PermissionError:
-                    pass  # process var ama izin yok — lock geçerli
+                if not Path(f"/proc/{old_pid}").exists():
+                    LOCK_FILE.unlink(missing_ok=True)
             except Exception:
                 LOCK_FILE.unlink(missing_ok=True)
         try:
@@ -96,7 +132,36 @@ def _release_lock():
             pass
 
 
+def _signal_handler(signum, frame):
+    """SIGTERM/SIGHUP alındığında lock'ı temizle ve çık."""
+    _release_lock()
+    sys.exit(0)
+
+
 atexit.register(_release_lock)
+
+# Signal handler — lock'u temizle (crash, kill, Ctrl+C)
+import signal as _signal
+
+def _signal_handler(signum, frame):
+    _release_lock()
+    sys.exit(0)
+
+_signal.signal(_signal.SIGTERM, _signal_handler)
+# SIGINT (Ctrl+C) zaten KeyboardInterrupt ile yakalanıyor
+try:
+    _signal.signal(_signal.SIGHUP, _signal_handler)   # terminal kapandığında
+except AttributeError:
+    pass  # Windows'ta SIGHUP yok
+
+# Signal handler'ları kaydet — crash ve kill sonrası lock temizlenir
+try:
+    import signal
+    signal.signal(signal.SIGTERM, _signal_handler)
+    if hasattr(signal, "SIGHUP"):        # Windows'ta yok
+        signal.signal(signal.SIGHUP, _signal_handler)
+except Exception:
+    pass
 
 
 # ─── Logging ─────────────────────────────────────────────────
@@ -146,12 +211,13 @@ def build_parser() -> argparse.ArgumentParser:
                    choices=["menu", "setup", "sync", "list",
                             "download", "today", "open",
                             "status", "stats", "log", "export",
-                            "logout", "config", "obis", "update"],
+                            "logout", "config", "obis", "update",
+                            "transkript", "program", "duyurular", "takvim"],
                    help="Çalıştırılacak komut (varsayılan: menu)")
     p.add_argument("--version", action="store_true",
                    help="Sürüm bilgisini göster ve güncelleme var mı kontrol et")
     p.add_argument("subcommand", nargs="?", default=None,
-                   help="obis alt komutu: sinav | notlar | devamsizlik")
+                   help="obis alt komutu: sinav | notlar | transkript | program | devamsizlik | duyurular | takvim")
     p.add_argument("--setup", action="store_true",
                    help="obis: OBİS oturum kurulumu")
     p.add_argument("--sinav", action="store_true",
@@ -485,6 +551,25 @@ def main():
             cmd_logout()
         elif args.command == "config":
             cmd_config()
+        elif args.command == "transkript":
+            from core.obis import get_session, get_transkript, print_transkript
+            s = get_session()
+            if s:
+                print_transkript(get_transkript(s))
+        elif args.command == "program":
+            from core.obis import get_session, get_ders_programi, print_ders_programi
+            s = get_session()
+            if s:
+                print_ders_programi(get_ders_programi(s))
+        elif args.command == "duyurular":
+            from core.obis import get_session, get_obis_duyurular, get_lms_duyurular, print_duyurular
+            s = get_session()
+            obis_d = get_obis_duyurular(s) if s else []
+            lms_d  = get_lms_duyurular(token) if token else []
+            print_duyurular(obis_d, lms_d)
+        elif args.command == "takvim":
+            from core.obis import get_lms_zaman_cizelgesi, print_zaman_cizelgesi
+            print_zaman_cizelgesi(get_lms_zaman_cizelgesi(token))
     except KeyboardInterrupt:
         print("\nÇıkılıyor...")
     except Exception as e:

@@ -216,9 +216,13 @@ Full usage guide: **[USAGE.md](https://github.com/trs-1342/alms/blob/main/KULLAN
 | `alms export` | Export course index |
 | `alms open` | Open download folder |
 | `alms obis --setup` | Set up OBIS session |
-| `alms obis --sinav` | Exam schedule |
-| `alms obis notlar` | Course grades |
-| `alms obis devamsizlik` | Attendance |
+| `alms obis sinav` | Exam schedule |
+| `alms obis notlar` | Course grades (assignments/midterm/final/letter) |
+| `alms obis transkript` | Transcript + semester GPA and cumulative GPA |
+| `alms obis program` | Weekly course schedule |
+| `alms obis devamsizlik` | Attendance status |
+| `alms obis duyurular` | OBIS announcements (full content) |
+| `alms takvim` | ALMS activity timeline |
 | `alms update` | Install updates |
 | `alms --version` | Version info |
 | `alms logout` | Delete saved credentials |
@@ -240,7 +244,7 @@ The session token remains valid until you log out.
 
 ## Automatic Downloads
 
-Configured from menu option **[12] Auto-run**.
+Configured from menu option **[16] Auto-run**.
 
 | Platform | Method | Log |
 |----------|--------|-----|
@@ -292,5 +296,5 @@ MIT
 
 ## Developer
 
-[My Web Site](https://hattab.vercel.app)
+[My Web Site](https://hattab.vercel.app) <br/>
 [GitHub](https://github.com/trs-1342)
