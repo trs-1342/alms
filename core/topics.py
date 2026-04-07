@@ -217,7 +217,6 @@ def _fetch_all_topics() -> list[dict]:
     """
     from core.firebase import query_collection
     try:
-        # Basit sorgu — sadece limit, filtre yok
         docs = query_collection(
             "topics",
             filters=None,
@@ -225,9 +224,12 @@ def _fetch_all_topics() -> list[dict]:
             limit=100,
             descending=False,
         )
+        if docs is None:
+            log.warning("_fetch_all_topics: sorgu None döndü")
+            return []
         return docs
     except Exception as e:
-        log.debug("_fetch_all_topics: %s", e)
+        log.warning("_fetch_all_topics başarısız: %s", e)
         return []
 
 
@@ -338,6 +340,9 @@ def print_topics(topics: list[dict]):
 
 # ── Konu ekleme ───────────────────────────────────────────────
 
+_MAX_TOPIC_CHARS = 500
+
+
 def submit_topic(student_no: str) -> bool:
     from core.firebase import add_document, student_hash, is_configured
 
@@ -425,7 +430,7 @@ def submit_topic(student_no: str) -> bool:
         # Tek mesaj modu
         print(f"\n  {_bold('Konuları yazın')}:")
         print(f"  {_dim('Örn: Kirchhoff yasaları, RC devre analizi, manyetik alan')}")
-        print(f"  {_dim('Birden fazla satır yazabilirsiniz. Bitirmek için boş satır bırakın.')}\n")
+        print(f"  {_dim(f'Birden fazla satır yazabilirsiniz. Bitirmek için boş satır bırakın. (maks. {_MAX_TOPIC_CHARS} karakter)')}\n")
         lines = []
         while True:
             try:
@@ -438,6 +443,10 @@ def submit_topic(student_no: str) -> bool:
                     break
                 print(f"  {_dim('En az bir şey yazın...')}")
                 continue
+            current_len = len("\n".join(lines + [line]))
+            if current_len > _MAX_TOPIC_CHARS:
+                print(f"  ⚠️  Karakter sınırına ulaşıldı ({_MAX_TOPIC_CHARS}). Bu satır eklenmedi.")
+                break
             lines.append(line)
         if not lines:
             print("  ❌ Konu girilmedi.")
@@ -465,6 +474,13 @@ def submit_topic(student_no: str) -> bool:
             print("  ❌ Konu girilmedi.")
             return False
         raw_text = "; ".join(topics_list)
+
+    # Karakter sınırı kontrolü
+    if len(raw_text) > _MAX_TOPIC_CHARS:
+        print(f"\n  ⚠️  Konu metni çok uzun: {len(raw_text)} karakter "
+              f"(maks. {_MAX_TOPIC_CHARS}).")
+        print(f"  Lütfen daha kısa yazın veya gereksiz ayrıntıları çıkarın.\n")
+        return False
 
     # 7. Not
     print()
@@ -584,10 +600,13 @@ def vote_topic(topic_id_prefix: str, student_no: str) -> bool:
     vote = "up" if oy_idx == 0 else "down"
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    set_document("votes", f"{shash}_{tid}", {
+    vote_ok = set_document("votes", f"{shash}_{tid}", {
         "student_hash": shash, "topic_id": tid,
         "vote": vote, "voted_at": now,
     })
+    if not vote_ok:
+        print(f"\n  {_red('❌')} Oy kaydedilemedi — bağlantı hatası veya izin sorunu.\n")
+        return False
 
     up   = topic.get("votes_up",   0) + (1 if vote == "up"   else 0)
     down = topic.get("votes_down", 0) + (1 if vote == "down" else 0)
@@ -624,12 +643,15 @@ def admin_review(topic_id_prefix: str, student_no: str, action: str, note: str =
 
     status = "approved" if action == "approve" else "rejected"
     now    = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    update_document("topics", topic["_id"], {
+    ok = update_document("topics", topic["_id"], {
         "status":      status,
         "admin_note":  note,
         "reviewed_at": now,
         "reviewed_by": student_hash(student_no),
     })
+    if not ok:
+        print(f"  {_red('❌')} Güncelleme başarısız — bağlantı veya izin hatası.\n")
+        return False
     emoji = _green("✅ Onaylandı") if status == "approved" else _red("❌ Reddedildi")
     print(f"\n  {emoji}: {topic.get('course_code')} — {topic.get('exam_type','').upper()}\n")
     return True

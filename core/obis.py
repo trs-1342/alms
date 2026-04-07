@@ -905,6 +905,145 @@ def print_devamsizlik(rows: list[dict]):
             print(satir)
     print()
 
+# ── Yaklaşan sınav bildirimi ──────────────────────────────────────────────────
+
+def check_upcoming_exams_notify(session: requests.Session) -> None:
+    """
+    1 ve 3 gün içindeki sınavlar için masaüstü bildirimi gönder.
+    cmd_sync'ten çağrılır — cron her gün otomatik kontrol eder.
+    """
+    from datetime import date as _date
+    from utils.notify import send as _notify
+
+    try:
+        sinavlar = get_sinav_tarihleri(session)
+    except Exception:
+        return
+
+    today = _date.today()
+    for s in sinavlar:
+        sinav_date = s.get("date")
+        if not isinstance(sinav_date, _date):
+            continue
+        delta = (sinav_date - today).days
+        if delta not in (1, 3):
+            continue
+
+        gun_str = "Yarın" if delta == 1 else "3 gün sonra"
+        title   = f"📚 Sınav: {gun_str}"
+        parts   = [f"{s['ders']}  {s.get('tur','')}",
+                   f"{s['tarih']}  {s.get('saat','')}"]
+        if s.get("yer"):
+            parts.append(s["yer"])
+        _notify(title, "  ·  ".join(p for p in parts if p.strip()))
+
+
+# ── GPA / Not simülasyonu ─────────────────────────────────────────────────────
+
+# Türkiye standart harf notu → minimum puan eşiği
+_HARF_ESIK = [
+    ("AA", 90), ("BA", 85), ("BB", 75), ("CB", 65),
+    ("CC", 55), ("DC", 50), ("DD", 45), ("FD", 40), ("FF", 0),
+]
+
+# 4'lük sistemdeki katsayılar
+_HARF_KATSAYI = {
+    "AA": 4.0, "BA": 3.5, "BB": 3.0, "CB": 2.5,
+    "CC": 2.0, "DC": 1.5, "DD": 1.0, "FD": 0.5, "FF": 0.0,
+}
+
+
+def simulate_final_grades(notlar: list[dict]) -> list[dict]:
+    """
+    Vize notu bilinen her ders için finalden kaç alınması gerektiğini hesapla.
+    Ağırlık: %40 vize + %60 final (Türkiye üniversite standardı).
+
+    Döner: [{
+        "kod": "FIZ108", "ad": "Fizik II",
+        "vize": 72.0, "final": None | float,
+        "current_harf": "BB",
+        "simulations": [{"harf": "AA", "gerekli": 96.7, "mumkun": True}, ...]
+    }]
+    """
+    results = []
+    for donem in notlar:
+        for d in donem.get("dersler", []):
+            vize_str = (d.get("vize") or "").strip()
+            if not vize_str:
+                continue
+            try:
+                vize = float(vize_str)
+            except ValueError:
+                continue
+
+            final_str = (d.get("final") or "").strip()
+            try:
+                current_final: float | None = float(final_str) if final_str else None
+            except ValueError:
+                current_final = None
+
+            sims = []
+            for harf, min_puan in _HARF_ESIK:
+                # min_puan = 0.4 * vize + 0.6 * final  →  final = (min - 0.4*vize) / 0.6
+                gerekli = (min_puan - 0.4 * vize) / 0.6
+                gerekli = round(max(0.0, min(100.0, gerekli)), 1)
+                sims.append({
+                    "harf":    harf,
+                    "gerekli": gerekli,
+                    "mumkun":  gerekli <= 100,
+                })
+
+            results.append({
+                "kod":          d.get("kod", ""),
+                "ad":           d.get("ad", ""),
+                "vize":         vize,
+                "final":        current_final,
+                "current_harf": d.get("harf", ""),
+                "simulations":  sims,
+            })
+    return results
+
+
+def print_final_simulation(simdata: list[dict]):
+    """
+    GPA simülasyonu ekrana yazar.
+    Her ders için finalden alınması gereken notları gösterir.
+    """
+    if not simdata:
+        print("\n  Not verisi bulunamadı.")
+        return
+
+    print()
+    print(f"  {_BOLD}Ağırlık: %40 Vize + %60 Final{_RESET}")
+    print(f"  {_DIM}Sadece vize notu girilen dersler gösterilir.{_RESET}")
+    print()
+
+    for d in simdata:
+        vize_str  = f"{d['vize']:.0f}"
+        final_str = f"{d['final']:.0f}" if d["final"] is not None else "—"
+        harf_str  = d["current_harf"] or "—"
+
+        print(f"  {_BOLD}{_COLORS.get('cyan','')}{d['kod']:<8}{_RESET}"
+              f"  {d['ad'][:32]:<34}"
+              f"  {_DIM}Vize:{vize_str}  Final:{final_str}  {harf_str}{_RESET}")
+
+        # Mümkün olan hedef notlar
+        mumkun = [(s["harf"], s["gerekli"]) for s in d["simulations"] if s["mumkun"]]
+        if mumkun:
+            parts = []
+            for harf, ger in mumkun:
+                if ger <= 0:
+                    tag = _COLORS.get("green","") + f"{harf}:geçti" + _RESET
+                else:
+                    tag = f"{harf}:{ger:.0f}"
+                parts.append(tag)
+            print(f"  {'':8}  {_DIM}Gerekli final → {_RESET}"
+                  + "  ".join(parts))
+        else:
+            print(f"  {'':8}  {_DIM}Mevcut vize ile hiçbir not almak mümkün değil.{_RESET}")
+        print()
+
+
 # ── Ana fonksiyon ─────────────────────────────────────────────────────────────
 
 def obis_main(args=None):

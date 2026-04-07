@@ -58,9 +58,7 @@ if "!PYTHON_FOUND!"=="0" (
         echo   winget ile Python 3.12 kuruluyor...
         echo   ^(Bu islem birkaç dakika surebilir^)
         echo.
-        winget install Python.Python.3.12 --silent ^
-            --accept-package-agreements ^
-            --accept-source-agreements
+        winget install Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
         if not errorlevel 1 (
             echo.
             echo   [OK] Python kuruldu.

@@ -146,12 +146,9 @@ def setup_firebase(as_admin: bool = False):
 
     # Test et
     print("\n  Bağlantı test ediliyor...")
-    # Geçici config ile test
-    import tempfile, os
-    test_cfg = {"apiKey": api_key, "projectId": project_id}
-    token = _do_anonymous_auth(api_key)
+    ok = _test_api_key(api_key)
 
-    if token:
+    if ok:
         print("  ✅ Bağlantı başarılı!")
         if as_admin:
             save_repo_config(api_key, project_id, **extras)
@@ -160,8 +157,6 @@ def setup_firebase(as_admin: bool = False):
             print("  → git push — diğer kullanıcılar güncelleyince otomatik alır")
         else:
             save_local_config(api_key, project_id, **extras)
-        # Token'ı kaydet
-        _save_token(token)
         return True
     else:
         print("  ❌ Bağlantı başarısız!")
@@ -188,6 +183,27 @@ def _save_token(data: dict):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     _TOKEN_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
     _TOKEN_FILE.chmod(0o600)
+
+
+def _test_api_key(api_key: str) -> bool:
+    """
+    API key geçerli mi test et — hesap oluşturmadan.
+    accounts:lookup endpoint'ine sahte token gönder:
+    - "API key not valid" içeren mesaj → key yanlış
+    - INVALID_ID_TOKEN vb. → key doğru (beklenen Firebase hatası)
+    """
+    try:
+        r = _http.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={api_key}",
+            json={"idToken": "test"},
+            timeout=10,
+        )
+        msg = r.json().get("error", {}).get("message", "")
+        # Geçersiz key → "API key not valid..." veya "API_KEY_INVALID"
+        invalid = "API key not valid" in msg or "API_KEY_INVALID" in msg
+        return not invalid
+    except Exception:
+        return False
 
 
 def _student_email(student_no: str) -> str:
@@ -275,7 +291,16 @@ def firebase_login(student_no: str) -> bool:
     # Önce signin, yoksa signup
     new_tok = _do_student_signin(student_no, api_key) or _do_student_signup(student_no, api_key)
     if new_tok:
+        new_tok["_auth_method"] = "email"   # migration ayırt edici işaret
         _save_token(new_tok)
+        # Öğrenci kaydını oluştur/güncelle (UID artık geçerli)
+        try:
+            import platform as _plat
+            from core.config import get as _cfg
+            version = str(_cfg("version") or "")
+            register_student(student_no, version=version, platform=_plat.system())
+        except Exception as e:
+            log.debug("register_student: %s", e)
         return True
     return False
 
@@ -557,34 +582,50 @@ def student_hash(student_no: str) -> str:
 
 
 def register_student(student_no: str, version: str = "", platform: str = "") -> bool:
+    """
+    Öğrenci kaydını Firebase'e yazar/günceller.
+    Doc ID: Firebase UID (request.auth.uid ile eşleşir → Security Rules çalışır).
+    student_hash alan olarak saklanır (gizlilik için).
+    """
     if not is_configured():
+        return False
+    uid = get_uid()
+    if not uid:
         return False
     shash = student_hash(student_no)
     now   = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    existing = get_document("students", shash)
+
+    existing = get_document("students", uid)
     if existing:
-        return update_document("students", shash, {
+        return update_document("students", uid, {
             "last_login": now, "version": version, "platform": platform,
         })
     import platform as _plat
-    return set_document("students", shash, {
-        "student_hash": shash,
-        "last_login":   now,
-        "created_at":   now,
-        "version":      version,
-        "platform":     platform or _plat.system(),
-        "login_count":  1,
-        "is_admin":     False,
-        "admin_role":   None,
+    return set_document("students", uid, {
+        "student_hash":     shash,
+        "last_login":       now,
+        "created_at":       now,
+        "version":          version,
+        "platform":         platform or _plat.system(),
+        "login_count":      1,
+        "is_admin":         False,
+        "admin_role":       None,
         "admin_faculty":    None,
         "admin_department": None,
     })
 
 
 def is_admin(student_no: str) -> tuple[bool, str | None, str | None]:
+    """
+    Admin kontrolü Firebase UID üzerinden yapar.
+    Security Rules isAdmin() ile aynı mantık — doc ID = Firebase UID.
+    """
     if not is_configured():
         return False, None, None
-    doc = get_document("students", student_hash(student_no))
+    uid = get_uid()
+    if not uid:
+        return False, None, None
+    doc = get_document("students", uid)
     if not doc:
         return False, None, None
     if doc.get("is_admin"):

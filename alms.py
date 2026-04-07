@@ -211,64 +211,175 @@ def setup_logging(verbose: bool = False, quiet: bool = False):
 
 
 # ─── CLI ─────────────────────────────────────────────────────
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+
+# Komut takma adları — hem TR hem EN çalışır
+_CMD_ALIASES: dict[str, str] = {
+    # TR → kanonik
+    "senkronize":   "sync",
+    "indir":        "download",
+    "listele":      "list",
+    "bugun":        "today",
+    "bugün":        "today",
+    "ac":           "open",
+    "aç":           "open",
+    "durum":        "status",
+    "istatistik":   "stats",
+    "istatistikler": "stats",
+    "guncelle":     "update",
+    "güncelle":     "update",
+    "kur":          "setup",
+    "cikis":        "logout",
+    "çıkış":        "logout",
+    "ayarlar-goster": "config",
+    # EN → kanonik
+    "synchronize":    "sync",
+    "download-files": "download",
+    "courses":        "list",
+    "schedule":       "program",
+    "absence":        "devamsizlik",
+    "attendance":     "devamsizlik",
+    "grades":         "notlar",
+    "notes":          "notlar",
+    "exam":           "sinav",
+    "exams":          "sinav",
+    "transcript":     "transkript",
+    "announcements":  "duyurular",
+    "calendar":       "takvim",
+    "topics":         "konular",
+    "update-check":   "update",
+    "quit":           "logout",
+}
+
+_CANONICAL_COMMANDS = frozenset([
+    "menu", "setup", "sync", "list", "download", "today", "open",
+    "status", "stats", "log", "export", "logout", "config", "obis",
+    "update", "transkript", "program", "duyurular", "takvim",
+    "devamsizlik", "notlar", "sinav", "konular",
+])
+
+
+def _suggest_commands(cmd: str) -> list[str]:
+    """Girilen komut adına benzer kanonik komutları öner."""
+    cmd_l = cmd.lower()
+    # Önce alias listesinde tam eşleşme
+    if cmd_l in _CMD_ALIASES:
+        return [_CMD_ALIASES[cmd_l]]
+    # Prefix veya substring eşleşmesi
+    hits = []
+    for c in sorted(_CANONICAL_COMMANDS):
+        if c.startswith(cmd_l[:3]) or cmd_l in c or c in cmd_l:
+            hits.append(c)
+    return hits[:4]
+
+
+class _BilingualParser(argparse.ArgumentParser):
+    """Bilinmeyen komut / flag hatalarını TR/EN olarak göster."""
+
+    def error(self, message: str):  # type: ignore[override]
+        lang = "tr"
+        try:
+            from core.config import get as _cfg
+            lang = _cfg("language") or "tr"
+        except Exception:
+            pass
+
+        # Bilinmeyen komut mu?
+        cmd_given = None
+        for arg in sys.argv[1:]:
+            if not arg.startswith("-"):
+                cmd_given = arg
+                break
+
+        if cmd_given and cmd_given not in _CANONICAL_COMMANDS and cmd_given not in _CMD_ALIASES:
+            suggestions = _suggest_commands(cmd_given)
+            if lang == "tr":
+                print(f"\n  ❌ Bilinmeyen komut: '{cmd_given}'")
+                if suggestions:
+                    print(f"  💡 Bunu mu demek istediniz?\n")
+                    for s in suggestions:
+                        print(f"       alms {s}")
+                print(f"\n  Kullanılabilir komutlar: alms --help\n")
+            else:
+                print(f"\n  ❌ Unknown command: '{cmd_given}'")
+                if suggestions:
+                    print(f"  💡 Did you mean?\n")
+                    for s in suggestions:
+                        print(f"       alms {s}")
+                print(f"\n  Available commands: alms --help\n")
+        else:
+            # Diğer argparse hatası (hatalı flag vb.)
+            if lang == "tr":
+                print(f"\n  ❌ Hata: {message}")
+                print(f"  Yardım için: alms --help\n")
+            else:
+                print(f"\n  ❌ Error: {message}")
+                print(f"  For help: alms --help\n")
+        sys.exit(2)
+
+
+def build_parser() -> _BilingualParser:
+    p = _BilingualParser(
         prog="alms",
         description="IGU ALMS — Ders Materyali İndirici",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    # choices kaldırıldı — alias çözümlemesi main() içinde yapılır
     p.add_argument("command", nargs="?", default="menu",
-                   choices=["menu", "setup", "sync", "list",
-                            "download", "today", "open",
-                            "status", "stats", "log", "export",
-                            "logout", "config", "obis", "update",
-                            "transkript", "program", "duyurular", "takvim",
-                            "devamsizlik", "notlar", "sinav", "konular"],
-                   help="Çalıştırılacak komut (varsayılan: menu)")
+                   help="Komut (TR veya EN) — varsayılan: menu  |  alms --help")
     p.add_argument("--version", action="store_true",
                    help="Sürüm bilgisini göster ve güncelleme var mı kontrol et")
     p.add_argument("subcommand", nargs="?", default=None,
                    help="obis alt komutu: sinav | notlar | transkript | program | devamsizlik | duyurular | takvim")
-    p.add_argument("--setup", action="store_true",
-                   help="obis: OBİS oturum kurulumu")
-    p.add_argument("--sinav", action="store_true",
+    p.add_argument("--setup", "--kurulum", dest="setup", action="store_true",
+                   help="obis: OBİS oturum kurulumu  |  --setup / --kurulum")
+    p.add_argument("--sinav", "--exam-flag", dest="sinav", action="store_true",
                    help="obis: sınav tarihlerini göster")
-    p.add_argument("-v", "--verbose", action="store_true",
-                   help="Ayrıntılı loglar")
-    p.add_argument("-q", "--quiet", action="store_true",
-                   help="Sadece hata logları (cron için)")
-    p.add_argument("-f", "--format", choices=["pdf", "video"],
-                   help="sync/download için dosya tipi filtresi")
-    p.add_argument("--course", metavar="KOD",
-                   help="Ders kodu veya isim filtresi (örn. FIZ108)")
-    p.add_argument("--courses", metavar="KOD1,KOD2",
-                   help="Virgülle ayrılmış ders kodları (otomasyon için)")
-    p.add_argument("--week", type=int, metavar="N",
-                   help="Sadece N. haftayı indir")
-    p.add_argument("--all", action="store_true",
-                   help="sync: daha önce indirilenler dahil tümünü indir")
-    p.add_argument("--force", action="store_true",
-                   help="Dosya diskde olsa bile yeniden indir (--all ile benzer)")
-    p.add_argument("--ekle", action="store_true",
-                   help="konular: yeni sınav konusu gir")
-    p.add_argument("--vize", action="store_true",
-                   help="konular: sadece vize konularını göster")
-    p.add_argument("--final", action="store_true",
-                   help="konular: sadece final konularını göster")
-    p.add_argument("--ders", metavar="KOD",
-                   help="konular: belirli ders koduna göre filtrele")
-    p.add_argument("--oyla", metavar="ID",
-                   help="konular: belirli konuya oy ver (ID)")
+    p.add_argument("-v", "--verbose", "--ayrintili", "--ayrıntılı",
+                   dest="verbose", action="store_true",
+                   help="Ayrıntılı loglar  |  -v / --verbose / --ayrintili")
+    p.add_argument("-q", "--quiet", "--sessiz",
+                   dest="quiet", action="store_true",
+                   help="Sadece hata logları (cron için)  |  -q / --quiet / --sessiz")
+    p.add_argument("-f", "--format", "--bicim", "--biçim",
+                   dest="format", choices=["pdf", "video"],
+                   help="sync/download için dosya tipi  |  -f pdf  |  --bicim video")
+    p.add_argument("--course", "--ders-kodu", dest="course", metavar="KOD",
+                   help="Ders kodu filtresi (örn. FIZ108)  |  --course / --ders-kodu")
+    p.add_argument("--courses", "--dersler", dest="courses", metavar="KOD1,KOD2",
+                   help="Virgülle ayrılmış ders kodları  |  --courses / --dersler")
+    p.add_argument("--week", "--hafta", dest="week", type=int, metavar="N",
+                   help="Sadece N. haftayı indir  |  --week / --hafta")
+    p.add_argument("--all", "--hepsi", dest="all", action="store_true",
+                   help="Daha önce indirilenler dahil tümünü indir  |  --all / --hepsi")
+    p.add_argument("--force", "--zorla", dest="force", action="store_true",
+                   help="Dosya diskde olsa bile yeniden indir  |  --force / --zorla")
+    p.add_argument("--ekle", "--add", dest="ekle", action="store_true",
+                   help="konular: yeni sınav konusu gir  |  --ekle / --add")
+    p.add_argument("--vize", "--midterm", dest="vize", action="store_true",
+                   help="konular: sadece vize konularını göster  |  --vize / --midterm")
+    p.add_argument("--final", "--finals", dest="final", action="store_true",
+                   help="konular: sadece final konularını göster  |  --final / --finals")
+    p.add_argument("--ders", "--course-filter", dest="ders", metavar="KOD",
+                   help="konular: ders kodu filtresi  |  --ders / --course-filter")
+    p.add_argument("--oyla", "--vote", dest="oyla", metavar="ID",
+                   help="konular: konuya oy ver (ID)  |  --oyla / --vote")
+    p.add_argument("--reconfigure", "--yeniden-yapilandir", "--yeniden-yapılandır",
+                   dest="reconfigure", metavar="ALAN",
+                   nargs="?", const="credentials",
+                   choices=["credentials", "schedule", "path"],
+                   help="setup: yeniden yapılandır  |  --reconfigure / --yeniden-yapilandir")
+    p.add_argument("--simule", "--simulate", "--simulasyon",
+                   dest="simule", action="store_true",
+                   help="notlar: final not simülasyonu  |  --simule / --simulate")
     return p
 
 
 # ─── Komutlar ────────────────────────────────────────────────
-def cmd_setup():
+def cmd_setup(reconfigure: str | None = None):
     from cli.wizard import run_wizard
     from utils.version import init_version_if_missing
-    run_wizard()
-    # version.json yoksa oluştur (ilk kurulum)
+    run_wizard(reconfigure=reconfigure)
     init_version_if_missing()
 
 
@@ -406,6 +517,16 @@ def cmd_sync(token: str, args):
         for ff in result["failed_files"]:
             log.error("  ❌ %s — %s", ff["file"], ff["error"])
 
+    # Yaklaşan sınav bildirimi (1 ve 3 gün kala)
+    if cfg_get("notify_desktop"):
+        try:
+            from core.obis import get_session, check_upcoming_exams_notify
+            sess = get_session()
+            if sess:
+                check_upcoming_exams_notify(sess)
+        except Exception:
+            pass
+
 
 def cmd_list(token: str):
     from core.api import get_active_courses
@@ -483,6 +604,43 @@ def main():
     setup_logging(args.verbose, args.quiet)
     log = logging.getLogger(__name__)
 
+    # Başlangıç migration'ları — kilit gerekmez, tüm komutlardan önce çalışır
+    try:
+        from core.migration import run_migrations
+        run_migrations()
+    except Exception:
+        pass
+
+    # Komut takma adını kanonik forma çevir (TR/EN alias desteği)
+    if args.command and args.command not in _CANONICAL_COMMANDS:
+        resolved = _CMD_ALIASES.get(args.command.lower())
+        if resolved:
+            args.command = resolved
+        else:
+            # Bilinmeyen komut — yardımcı mesaj ve çıkış
+            lang = "tr"
+            try:
+                from core.config import get as _cfg
+                lang = _cfg("language") or "tr"
+            except Exception:
+                pass
+            suggestions = _suggest_commands(args.command)
+            if lang == "tr":
+                print(f"\n  ❌ Bilinmeyen komut: '{args.command}'")
+                if suggestions:
+                    print(f"  💡 Bunu mu demek istediniz?\n")
+                    for s in suggestions:
+                        print(f"       alms {s}")
+                print(f"\n  Kullanılabilir komutlar: alms --help\n")
+            else:
+                print(f"\n  ❌ Unknown command: '{args.command}'")
+                if suggestions:
+                    print(f"  💡 Did you mean?\n")
+                    for s in suggestions:
+                        print(f"       alms {s}")
+                print(f"\n  Available commands: alms --help\n")
+            sys.exit(2)
+
     # --version
     if getattr(args, "version", False):
         from utils.version import get_current_version, get_version_info, check_update_available
@@ -517,7 +675,8 @@ def main():
 
     # Setup komutu kilit gerektirmez
     if args.command == "setup":
-        cmd_setup()
+        reconfigure = getattr(args, "reconfigure", None)
+        cmd_setup(reconfigure=reconfigure)
         return
 
     if not _acquire_lock():
@@ -544,15 +703,13 @@ def main():
         log.error("Giriş yapılamadı: %s", e)
         sys.exit(1)
 
-    # Firebase: öğrenci no ile deterministik hesap — arka planda, bloklamaz
+    # Firebase: öğrenci no ile deterministik hesap.
+    # Token geçerliyse anında döner; yoksa ~500ms auth işlemi yapar.
     if username:
         try:
-            import threading
             from core.firebase import firebase_login, is_configured
             if is_configured():
-                threading.Thread(
-                    target=firebase_login, args=(str(username),), daemon=True
-                ).start()
+                firebase_login(str(username))
         except Exception:
             pass
 
@@ -610,10 +767,15 @@ def main():
             if s:
                 print_devamsizlik(get_devamsizlik(s))
         elif args.command == "notlar":
-            from core.obis import get_session, get_notlar, print_notlar
+            from core.obis import (get_session, get_notlar, print_notlar,
+                                   simulate_final_grades, print_final_simulation)
             s = get_session()
             if s:
-                print_notlar(get_notlar(s))
+                notlar = get_notlar(s)
+                if getattr(args, "simule", False):
+                    print_final_simulation(simulate_final_grades(notlar))
+                else:
+                    print_notlar(notlar)
         elif args.command == "sinav":
             from core.obis import get_session, get_sinav_tarihleri, print_sinav_tarihleri
             s = get_session()

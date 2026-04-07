@@ -78,6 +78,22 @@ alms setup
 > **Administrator privileges are required for Task Scheduler (auto-download).**
 > Right-click → "Run as administrator".
 
+### Windows — Portable (Lab / No admin rights)
+
+For environments where **administrator password is required** (e.g. university lab computers):
+
+```bat
+git clone https://github.com/trs-1342/alms
+cd alms
+setup_portable.bat
+alms.bat setup
+```
+
+> - Downloads Python into the project folder (`portable\python\`) — no system-wide installation
+> - No administrator privileges required at any step
+> - Internet connection needed (~15 MB download)
+> - If you move the folder, re-run `setup_portable.bat`
+
 ---
 
 ### Manual Installation
@@ -292,7 +308,10 @@ Installed automatically by `setup.sh` / `setup.bat`.
 
 ## License
 
-MIT
+Source-Available License (Custom License)
+
+⚠️ This is NOT an open-source project.
+Its use for security purposes without explicit permission is strictly prohibited.
 
 ## Developer
 

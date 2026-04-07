@@ -78,6 +78,22 @@ alms setup
 > **Otomatik indirme (Task Scheduler) için yönetici izni gereklidir.**
 > Sağ tık → "Yönetici olarak çalıştır" ile açın.
 
+### Windows — Portable (Lab / Yönetici izni yok)
+
+Üniversite lab bilgisayarları gibi **yönetici şifresi gerektiren** ortamlar için:
+
+```bat
+git clone https://github.com/trs-1342/alms
+cd alms
+setup_portable.bat
+alms.bat setup
+```
+
+> - Python'u proje içine (`portable\python\`) indirir — sistem geneline kurulum yapmaz
+> - Hiçbir adımda yönetici izni **gerekmez**
+> - İnternet bağlantısı gerekir (~15 MB indirir)
+> - Klasörü taşıdığında `setup_portable.bat`'ı tekrar çalıştır
+
 ---
 
 ### Manuel Kurulum
@@ -292,7 +308,10 @@ beautifulsoup4>=4.12.0,<5.0.0
 
 ## Lisans
 
-MIT
+Kaynak Kodu Görülebilir Lisans. (Özel Lisans)
+
+⚠️ Bu bir açık kaynak projesi DEĞİLDİR.
+Açıkça izin verilmedikçe güvenlik amaçlı kullanımı kesinlikle yasaktır.
 
 ## Geliştirici
 

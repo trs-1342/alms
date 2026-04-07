@@ -74,6 +74,13 @@ TR = {
     "no_schedule":   "Kapalı",
     "status_title":  "Sistem Durumu",
     "dup_removed":   "duplicate kaldırıldı",
+    # Grup menüsü
+    "opt_files":     "📂  Dosyalar",
+    "opt_academic":  "🎓  Akademik",
+    "opt_reports":   "📊  Durum & Raporlar",
+    "opt_notlar":    "Notlar",
+    "opt_devamsizlik": "Devamsızlık",
+    "opt_takvim_lms": "Zaman Çizelgesi (LMS)",
 }
 
 EN = {
@@ -123,6 +130,13 @@ EN = {
     "no_schedule":   "Disabled",
     "status_title":  "System Status",
     "dup_removed":   "duplicates removed",
+    # Group menu
+    "opt_files":     "📂  Files",
+    "opt_academic":  "🎓  Academic",
+    "opt_reports":   "📊  Status & Reports",
+    "opt_notlar":    "Grades",
+    "opt_devamsizlik": "Attendance",
+    "opt_takvim_lms": "LMS Timeline",
 }
 
 
@@ -132,7 +146,26 @@ def _t(key):
     return (TR if lang == "tr" else EN).get(key, key)
 
 
+import unicodedata
+import re as _re
 import random
+
+
+def _visual_len(s: str) -> int:
+    """Terminal görsel genişliği: ANSI kodları yok sayılır, emoji/CJK = 2 sütun."""
+    plain = _re.sub(r'\033\[[^m]*m', '', s)
+    total = 0
+    for ch in plain:
+        ea = unicodedata.east_asian_width(ch)
+        total += 2 if ea in ('W', 'F') else 1
+    return total
+
+
+def _pad(text: str, width: int) -> str:
+    """Metni `width` görsel sütuna kadar boşlukla doldur (geniş karakter farkını telafi eder)."""
+    diff = width - _visual_len(text)
+    return text + ' ' * max(0, diff)
+
 
 _QUOTES = [
     "Kod yazmak zor değil; zor olan ne yazacağını bilmektir.",
@@ -167,11 +200,11 @@ def clear():
 
 def header(title="", show_quote=False):
     clear()
-    w = 54
+    w = 54  # görsel genişlik: ╔ ile ╗ arasındaki sütun sayısı
     print(cyan("╔" + "═" * w + "╗"))
-    print(cyan("║") + bold(f"  {_t('main_title'):<{w-2}}") + cyan("║"))
+    print(cyan("║") + bold(_pad(f"  {_t('main_title')}", w)) + cyan("║"))
     if title:
-        print(cyan("║") + yellow(f"  {title:<{w-2}}") + cyan("║"))
+        print(cyan("║") + yellow(_pad(f"  {title}", w)) + cyan("║"))
     print(cyan("╚" + "═" * w + "╝"))
 
     if show_quote:
@@ -824,19 +857,44 @@ def screen_status(token, username):
 
 # ─── Transkript ───────────────────────────────────────────────
 def screen_transkript():
-    header(_t("opt_transkript"))
     try:
-        from core.obis import get_session, get_transkript, print_transkript
+        from core.obis import (get_session, get_transkript, print_transkript,
+                               get_notlar, simulate_final_grades, print_final_simulation)
     except ImportError as e:
+        header(_t("opt_transkript"))
         print(f"  ⚠  Modül yüklenemedi: {e}")
         pause(); return
+
     session = get_session()
     if not session:
+        header(_t("opt_transkript"))
+        print(f"  {dim('OBİS oturumu yok — alms obis --setup')}")
         pause(); return
-    with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Transkript yükleniyor..."):
-        data = get_transkript(session)
-    print_transkript(data)
-    pause()
+
+    while True:
+        header(_t("opt_transkript"))
+        idx = menu([
+            "Transkript & Not Ortalaması",
+            "Final Simülasyonu  (Finalden kaç alsam CC/BB alırım?)",
+            _t("back"),
+        ])
+
+        if idx == 0:
+            header(_t("opt_transkript"))
+            with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Transkript yükleniyor..."):
+                data = get_transkript(session)
+            print_transkript(data)
+            pause()
+
+        elif idx == 1:
+            header(_t("opt_transkript"))
+            with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Notlar yükleniyor..."):
+                notlar = get_notlar(session)
+            print_final_simulation(simulate_final_grades(notlar))
+            pause()
+
+        else:
+            return
 
 
 # ─── Ders Programı ────────────────────────────────────────────
@@ -965,11 +1023,30 @@ def screen_settings():
         c        = cfg.load()
         open_aft = c.get("open_after_download", False)
         notify   = c.get("notify_desktop", True)
+
+        # OBİS session durumu
+        from utils.paths import CONFIG_DIR as _CONFIG_DIR
+        _sess_file = _CONFIG_DIR / "obis_session"
+        if _sess_file.exists():
+            import time as _time
+            _age_s = _time.time() - _sess_file.stat().st_mtime
+            if _age_s < 3600:
+                _age_str = f"{int(_age_s/60)} dk önce kaydedildi"
+            elif _age_s < 86400:
+                _age_str = f"{int(_age_s/3600)} saat önce kaydedildi"
+            else:
+                _age_str = f"{int(_age_s/86400)} gün önce kaydedildi"
+            _obis_status = green("✅ Kayıtlı") + dim(f"  ({_age_str})")
+        else:
+            _obis_status = dim("❌ Yok  (alms obis --setup)")
+
         print(f"  {cyan('[1]')} {_t('set_dir'):<34} {dim(c.get('download_dir',''))}")
         print(f"  {cyan('[2]')} {_t('set_parallel'):<34} {yellow(str(c.get('parallel',3)))}")
         print(f"  {cyan('[3]')} {_t('set_lang'):<34} {yellow(c.get('language','tr'))}")
         print(f"  {cyan('[4]')} {'İndirince klasörü otomatik aç':<34} {green('Açık') if open_aft else dim('Kapalı')}")
         print(f"  {cyan('[5]')} {'Masaüstü bildirimi':<34} {green('Açık') if notify else dim('Kapalı')}")
+        print(f"  {dim('─' * 52)}")
+        print(f"  {'OBİS Oturumu':<34} {_obis_status}")
         print(f"  {cyan('[0]')} {_t('back')}")
         print()
         raw = input(f"  {bold(_t('choose'))}: ").strip()
@@ -1411,9 +1488,196 @@ def _check_and_prompt_update():
         pass
 
 
+# ─── Notlar ekranı ────────────────────────────────────────────
+def screen_notlar():
+    header(_t("opt_notlar"))
+    from utils.spinner import Spinner
+    with Spinner("OBİS bağlanıyor..."):
+        from core.obis import get_session
+        session = get_session()
+    if not session:
+        pause()
+        return
+    with Spinner("Notlar alınıyor..."):
+        from core.obis import get_notlar
+        notlar = get_notlar(session)
+    from core.obis import print_notlar
+    print_notlar(notlar)
+
+    # Final simülasyonu opsiyonu
+    try:
+        r = input(f"  {dim('Final simülasyonu göster? [e/H]: ')}").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        pause()
+        return
+    if r in ("e", "y", "evet", "yes", "1"):
+        from core.obis import simulate_final_grades, print_final_simulation
+        print_final_simulation(simulate_final_grades(notlar))
+    pause()
+
+
+# ─── Devamsızlık ekranı ───────────────────────────────────────
+def screen_devamsizlik():
+    header(_t("opt_devamsizlik"))
+    from utils.spinner import Spinner
+    with Spinner("OBİS bağlanıyor..."):
+        from core.obis import get_session
+        session = get_session()
+    if not session:
+        pause()
+        return
+    with Spinner("Devamsızlık alınıyor..."):
+        from core.obis import get_devamsizlik, print_devamsizlik
+        print_devamsizlik(get_devamsizlik(session))
+    pause()
+
+
+# ─── Dosyalar alt menüsü ──────────────────────────────────────
+def _do_sync_menu(token):
+    """Menu içi sync — run_main_menu ve screen_dosyalar tarafından paylaşılır."""
+    from core.api import get_active_courses
+    from core.downloader import collect_files, download_all, sync_manifest_with_disk
+    from utils.logger import log_action
+    from utils.notify import send as notify
+    from utils.spinner import Spinner
+    from core.config import get as cfg_get
+    header(_t("opt_sync"))
+    sync_manifest_with_disk()
+    log_action("sync_start", {"force": False})
+    if cfg_get("notify_desktop"):
+        notify("ALMS Sync", "Yeni dosyalar taranıyor...")
+    with Spinner("Dersler taranıyor..."):
+        courses = get_active_courses(token)
+        files   = collect_files(token, courses, dedup=True)
+    if not files:
+        print(f"  {dim('Yeni dosya yok.')}")
+        log_action("sync_end", {"found": 0})
+    else:
+        print(f"  {green(str(len(files)))} yeni dosya bulundu\n")
+        result = download_all(token, files, only_new=True)
+        log_action("sync_end", {
+            "found": len(files), "ok": result["ok"],
+            "skipped": result["skipped"], "failed": result["failed"],
+        })
+        print(f"\n  {green('✅')} {result['ok']} indirildi  "
+              f"{dim('⬛')} {result['skipped']} atlandı  "
+              f"{red('❌')} {result['failed']} başarısız")
+        if cfg_get("notify_desktop"):
+            msg = f"{result['ok']} dosya indirildi"
+            if result["failed"]:
+                msg += f", {result['failed']} başarısız"
+            notify("ALMS Sync Tamamlandı", msg)
+    pause()
+
+
+def screen_dosyalar(token):
+    while True:
+        header(_t("opt_files"))
+        opts = [
+            _t("opt_sync"),
+            _t("opt_download"),
+            _t("opt_list"),
+            _t("opt_today"),
+            _t("opt_open"),
+            _t("opt_export"),
+            _t("back"),
+        ]
+        idx = menu(opts)
+        if idx == 0:
+            _do_sync_menu(token)
+        elif idx == 1:
+            screen_download(token)
+        elif idx == 2:
+            screen_list_courses(token)
+        elif idx == 3:
+            screen_today(token)
+        elif idx == 4:
+            cmd_open()
+            pause()
+        elif idx == 5:
+            cmd_export(token)
+        else:
+            break
+
+
+# ─── Akademik alt menüsü ──────────────────────────────────────
+def screen_akademik(token, username):
+    while True:
+        header(_t("opt_academic"))
+        opts = [
+            _t("opt_sinav"),
+            _t("opt_notlar"),
+            _t("opt_transkript"),
+            _t("opt_program"),
+            _t("opt_devamsizlik"),
+            _t("opt_duyurular"),
+            _t("opt_takvim_lms"),
+            _t("opt_konular"),
+            _t("back"),
+        ]
+        idx = menu(opts)
+        if idx == 0:
+            screen_sinav()
+        elif idx == 1:
+            screen_notlar()
+        elif idx == 2:
+            screen_transkript()
+        elif idx == 3:
+            screen_program()
+        elif idx == 4:
+            screen_devamsizlik()
+        elif idx == 5:
+            screen_duyurular(token)
+        elif idx == 6:
+            screen_takvim(token)
+        elif idx == 7:
+            screen_konular(token, username)
+        else:
+            break
+
+
+# ─── Durum & Raporlar alt menüsü ──────────────────────────────
+def screen_raporlar(token, username):
+    while True:
+        header(_t("opt_reports"))
+        opts = [
+            _t("opt_status"),
+            _t("opt_stats"),
+            _t("opt_log"),
+            _t("back"),
+        ]
+        idx = menu(opts)
+        if idx == 0:
+            screen_status(token, username)
+        elif idx == 1:
+            screen_stats()
+        elif idx == 2:
+            screen_log()
+        else:
+            break
+
+
+# ─── Ayarlar alt menüsü ───────────────────────────────────────
+def screen_ayarlar(token):
+    while True:
+        header(_t("opt_settings"))
+        opts = [
+            _t("opt_settings"),
+            _t("opt_auto"),
+            _t("back"),
+        ]
+        idx = menu(opts)
+        if idx == 0:
+            screen_settings()
+        elif idx == 1:
+            screen_auto(token)
+        else:
+            break
+
+
 # ─── Ana menü ─────────────────────────────────────────────────
 def run_main_menu(token, username):
-    # Güncelleme kontrolünü arka planda başlat — menü açılırken çalışır
     _start_update_check_bg()
 
     while True:
@@ -1423,90 +1687,21 @@ def run_main_menu(token, username):
         _check_and_prompt_update()
 
         opts = [
-            _t("opt_list"),            # 1
-            _t("opt_download"),        # 2
-            _t("opt_sync"),            # 3
-            _t("opt_today"),           # 4
-            _t("opt_open"),            # 5
-            _t("opt_status"),          # 6
-            _t("opt_stats"),           # 7
-            _t("opt_log"),             # 8
-            _t("opt_export"),          # 9
-            _t("opt_sinav"),           # 10
-            _t("opt_transkript"),      # 11
-            _t("opt_program"),         # 12
-            _t("opt_duyurular"),       # 13
-            _t("opt_konular"),         # 14
-            _t("opt_settings"),        # 15
-            _t("opt_auto"),            # 16
-            red(_t("opt_exit")),       # 17
+            _t("opt_files"),       # 0 — Dosyalar
+            _t("opt_academic"),    # 1 — Akademik
+            _t("opt_reports"),     # 2 — Durum & Raporlar
+            _t("opt_settings"),    # 3 — Ayarlar
+            red(_t("opt_exit")),   # 4 — Çıkış
         ]
         idx = menu(opts)
 
         if idx == 0:
-            screen_list_courses(token)
+            screen_dosyalar(token)
         elif idx == 1:
-            screen_download(token)
+            screen_akademik(token, username)
         elif idx == 2:
-            from core.api import get_active_courses
-            from core.downloader import collect_files, download_all, sync_manifest_with_disk
-            from utils.logger import log_action
-            from utils.notify import send as notify
-            from utils.spinner import Spinner
-            from core.config import get as cfg_get
-            header(_t("opt_sync"))
-            sync_manifest_with_disk()
-            log_action("sync_start", {"force": False})
-            if cfg_get("notify_desktop"):
-                notify("ALMS Sync", "Yeni dosyalar taranıyor...")
-            with Spinner("Dersler taranıyor..."):
-                courses = get_active_courses(token)
-                files   = collect_files(token, courses, dedup=True)
-            if not files:
-                print(f"  {dim('Yeni dosya yok.')}")
-                log_action("sync_end", {"found": 0})
-            else:
-                print(f"  {green(str(len(files)))} yeni dosya bulundu\n")
-                result = download_all(token, files, only_new=True)
-                log_action("sync_end", {
-                    "found": len(files), "ok": result["ok"],
-                    "skipped": result["skipped"], "failed": result["failed"],
-                })
-                print(f"\n  {green('✅')} {result['ok']} indirildi  "
-                      f"{dim('⬛')} {result['skipped']} atlandı  "
-                      f"{red('❌')} {result['failed']} başarısız")
-                if cfg_get("notify_desktop"):
-                    msg = f"{result['ok']} dosya indirildi"
-                    if result["failed"]:
-                        msg += f", {result['failed']} başarısız"
-                    notify("ALMS Sync Tamamlandı", msg)
-            pause()
+            screen_raporlar(token, username)
         elif idx == 3:
-            screen_today(token)
-        elif idx == 4:
-            cmd_open()
-            pause()
-        elif idx == 5:
-            screen_status(token, username)
-        elif idx == 6:
-            screen_stats()
-        elif idx == 7:
-            screen_log()
-        elif idx == 8:
-            cmd_export(token)
-        elif idx == 9:
-            screen_sinav()
-        elif idx == 10:
-            screen_transkript()
-        elif idx == 11:
-            screen_program()
-        elif idx == 12:
-            screen_duyurular(token)
-        elif idx == 13:
-            screen_konular(token, username)
-        elif idx == 14:
-            screen_settings()
-        elif idx == 15:
-            screen_auto(token)
+            screen_ayarlar(token)
         else:
             break

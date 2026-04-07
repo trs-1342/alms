@@ -32,12 +32,13 @@ service cloud.firestore {
     }
 
     // ── Öğrenci kayıtları ─────────────────────────────────────
-    // Her öğrenci kendi kaydını okuyup yazabilir.
+    // Doc ID = Firebase UID (request.auth.uid ile eşleşir).
+    // Her öğrenci sadece kendi kaydını okuyup yazabilir.
     // Admin alanlarını (is_admin, admin_role) sadece super admin değiştirebilir.
-    match /students/{studentHash} {
-      allow read:   if isAuthed();
-      allow create: if isAuthed();
-      allow update: if isAuthed() && (
+    match /students/{uid} {
+      allow read:   if isAuthed() && request.auth.uid == uid;
+      allow create: if isAuthed() && request.auth.uid == uid;
+      allow update: if isAuthed() && request.auth.uid == uid && (
         // Kendi kaydını admin alanları hariç güncelleyebilir
         !request.resource.data.diff(resource.data)
           .affectedKeys().hasAny(["is_admin", "admin_role", "admin_faculty", "admin_department"])

@@ -2,6 +2,10 @@
 .venv/
 venv/
 env/
+
+# Portable kurulum (setup_portable.bat tarafindan olusturulur)
+portable/
+alms.bat
 *.env
 
 # Python cache — asla commit edilmez
