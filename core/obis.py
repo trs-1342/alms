@@ -508,27 +508,102 @@ def get_ders_programi(session: requests.Session) -> list[dict]:
             })
     return dersler
 
+def _trunc(text: str, max_len: int) -> str:
+    """Metni max_len'de kes, kelime sınırında, … ile bitir."""
+    if not text or len(text) <= max_len:
+        return text or ""
+    cut = text[:max_len - 1]
+    sp  = cut.rfind(" ")
+    if sp > max_len // 2:
+        cut = cut[:sp]
+    return cut.rstrip() + "…"
+
+
+def _parse_ders_cell(raw_adi: str, raw_yer: str) -> tuple[str, str]:
+    """
+    OBİS bazen yer bilgisini ders adının içine koyar:
+    'MATEMATİK II (J BLOK) KAT: 3' → ('MATEMATİK II', 'J BLOK · KAT: 3')
+    Eğer yer zaten ayrı geldiyse dokunma.
+    """
+    if raw_yer:
+        return raw_adi, raw_yer
+    m = re.match(r'^(.+?)\s*\((.+?)\)\s*(.*)$', raw_adi)
+    if m:
+        ad    = m.group(1).strip()
+        yer   = m.group(2).strip()
+        extra = m.group(3).strip()
+        if extra:
+            yer = f"{yer} · {extra}"
+        return ad, yer
+    return raw_adi, ""
+
+
 def print_ders_programi(dersler: list[dict]):
     if not dersler:
         print("  Ders programı bulunamadı.")
         return
+
     gun_sirasi = ["PAZARTESİ","SALI","ÇARŞAMBA","PERŞEMBE","CUMA","CUMARTESİ","PAZAR"]
-    from collections import defaultdict
-    grouped = defaultdict(list)
+
+    # Aynı gündeki aynı dersi (ders_kodu) grupla → saat aralığı hesapla
+    by_gun_kod: dict[tuple, list] = defaultdict(list)
     for d in dersler:
-        grouped[d["gun"].upper()].append(d)
+        by_gun_kod[(d["gun"].upper(), d["ders_kodu"])].append(d)
+
     print()
     for gun in gun_sirasi:
-        dlist = grouped.get(gun, [])
-        if not dlist:
+        # Bu güne ait kurs grupları — ilk saate göre sırala
+        gun_gruplari = [
+            (kod, slots)
+            for (g, kod), slots in by_gun_kod.items()
+            if g == gun
+        ]
+        if not gun_gruplari:
             continue
+
+        gun_gruplari.sort(key=lambda x: min(s["saat"] for s in x[1]))
+
         print(f"  {_BOLD}{_C.CYAN}── {gun} ──{_RESET}")
-        for d in sorted(dlist, key=lambda x: x["saat"]):
-            yer  = d["yer"][:30]  if d["yer"]  else "—"
-            hoca = d["hoca"][:25] if d["hoca"] else "—"
-            print(f"  {_C.YELLOW}{d['saat']:<14}{_RESET} "
-                  f"{_BOLD}{d['ders_kodu']:<10}{_RESET} "
-                  f"{d['ders_adi'][:22]:<24} {_DIM}{yer:<32} {hoca}{_RESET}")
+        print()
+
+        for kod, slots in gun_gruplari:
+            slots = sorted(slots, key=lambda s: s["saat"])
+            first = slots[0]
+            last  = slots[-1]
+
+            # Saat aralığı: "09:00-09:50" → başlangıç "09:00", bitiş "09:50"
+            def _t(saat, part):
+                return saat.split("-")[part] if "-" in saat else saat
+            baslangic = _t(first["saat"], 0)
+            bitis     = _t(last["saat"],  1)
+            sure_str  = f"{baslangic}–{bitis}"  if baslangic != bitis else baslangic
+
+            # Ders adı ve yer ayrıştır
+            ders_adi, yer = _parse_ders_cell(first["ders_adi"], first["yer"])
+            hoca = first["hoca"] or ""
+
+            # Saat sayısı
+            saat_sayi = len(slots)
+            saat_label = f"{saat_sayi} saat" if saat_sayi > 1 else "1 saat"
+
+            # Satır 1: KOD  Ders Adı (kırpılmış)     09:00–14:50  5 saat
+            ad_goster = _trunc(ders_adi, 30)
+            print(
+                f"  {_BOLD}{_C.YELLOW}{kod:<8}{_RESET}"
+                f"  {_BOLD}{ad_goster:<32}{_RESET}"
+                f"  {_C.CYAN}{sure_str}{_RESET}"
+                f"  {_DIM}{saat_label}{_RESET}"
+            )
+
+            # Satır 2: (boşluk hizalı) Yer · Hoca
+            yer_goster  = _trunc(yer,  35) if yer  else "—"
+            hoca_goster = _trunc(hoca, 30) if hoca else ""
+            alt_satir   = yer_goster
+            if hoca_goster:
+                alt_satir += f"  ·  {hoca_goster}"
+            print(f"  {' ' * 8}  {_DIM}{alt_satir}{_RESET}")
+            print()
+
         print()
 
 # ── OBİS Duyuruları (Default.aspx) ───────────────────────────────────────────

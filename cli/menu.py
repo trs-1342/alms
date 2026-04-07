@@ -42,7 +42,11 @@ TR = {
     "opt_transkript": "Transkript & Not Ortalaması",
     "opt_program":   "Ders Programı",
     "opt_duyurular": "Duyurular (OBİS + LMS)",
+    "opt_konular":   "Sınav Konuları",
     "opt_takvim":    "Zaman Çizelgesi",
+    "opt_stats":     "İstatistikler",
+    "opt_log":       "Aktivite Logu",
+    "opt_export":    "Dışa Aktar",
     "choose":        "Seçiminiz",
     "back":          "Geri",
     "invalid":       "Geçersiz seçim.",
@@ -87,7 +91,11 @@ EN = {
     "opt_transkript": "Transcript & GPA",
     "opt_program":   "Course Schedule",
     "opt_duyurular": "Announcements",
+    "opt_konular":   "Exam Topics",
     "opt_takvim":    "Timeline",
+    "opt_stats":     "Statistics",
+    "opt_log":       "Activity Log",
+    "opt_export":    "Export",
     "choose":        "Your choice",
     "back":          "Back",
     "invalid":       "Invalid choice.",
@@ -848,6 +856,80 @@ def screen_program():
     pause()
 
 
+# ─── Sınav Konuları ───────────────────────────────────────────
+def screen_konular(token: str, username: str):
+    try:
+        from core.topics import list_topics, print_topics, submit_topic, vote_topic
+        from core.firebase import is_configured, setup_firebase
+    except ImportError as e:
+        header(_t("opt_konular"))
+        print(f"  ⚠  Modül yüklenemedi: {e}")
+        pause(); return
+
+    if not is_configured():
+        header(_t("opt_konular"))
+        print(f"  ⚠️  Firebase bağlantısı kurulmamış.")
+        print("  " + dim("Kurmak için: alms konular --setup"))
+        choice = input("  Şimdi kur? [E/h]: ").strip().lower()
+        if choice in ("", "e", "evet"):
+            setup_firebase()
+        pause(); return
+
+    student_no = str(username) if username and str(username) not in ("", "?", "None") else ""
+
+    opts_k = ["Konuları Listele", "Konu Ekle", "Oya Katıl", _t("back")]
+
+    while True:
+        header(_t("opt_konular"))
+        idx = menu(opts_k)
+
+        if idx == 0:
+            # Listele
+            header(_t("opt_konular"))
+            with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Yükleniyor..."):
+                topics = list_topics(limit=30)
+            print_topics(topics)
+            pause()
+
+        elif idx == 1:
+            # Konu Ekle
+            if not student_no:
+                header(_t("opt_konular"))
+                print(f"  {red('❌')} Oturum bilgisi alınamadı — lütfen yeniden giriş yapın.")
+                pause()
+                continue
+            header(_t("opt_konular"))
+            submit_topic(student_no)
+            pause()
+
+        elif idx == 2:
+            # Oya Katıl
+            if not student_no:
+                header(_t("opt_konular"))
+                print(f"  {red('❌')} Oturum bilgisi alınamadı — lütfen yeniden giriş yapın.")
+                pause()
+                continue
+            header(_t("opt_konular"))
+            with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Konular yükleniyor..."):
+                topics = list_topics(limit=30)
+            if not topics:
+                print(f"\n  {dim('Henüz oylanacak konu yok.')}")
+                pause()
+                continue
+            print_topics(topics)
+            try:
+                topic_id = input("  Konu ID girin (ilk 8 karakter): ").strip()
+            except (KeyboardInterrupt, EOFError):
+                continue
+            if topic_id:
+                vote_topic(topic_id, student_no)
+                pause()
+
+        else:
+            # Geri veya geçersiz
+            return
+
+
 # ─── Duyurular ────────────────────────────────────────────────
 def screen_duyurular(token: str):
     header(_t("opt_duyurular"))
@@ -1347,16 +1429,17 @@ def run_main_menu(token, username):
             _t("opt_today"),           # 4
             _t("opt_open"),            # 5
             _t("opt_status"),          # 6
-            "İstatistikler",           # 7
-            "Aktivite Logu",           # 8
-            "Dışa Aktar",              # 9
+            _t("opt_stats"),           # 7
+            _t("opt_log"),             # 8
+            _t("opt_export"),          # 9
             _t("opt_sinav"),           # 10
             _t("opt_transkript"),      # 11
             _t("opt_program"),         # 12
             _t("opt_duyurular"),       # 13
-            _t("opt_settings"),        # 14
-            _t("opt_auto"),            # 15
-            red(_t("opt_exit")),       # 16
+            _t("opt_konular"),         # 14
+            _t("opt_settings"),        # 15
+            _t("opt_auto"),            # 16
+            red(_t("opt_exit")),       # 17
         ]
         idx = menu(opts)
 
@@ -1420,8 +1503,10 @@ def run_main_menu(token, username):
         elif idx == 12:
             screen_duyurular(token)
         elif idx == 13:
-            screen_settings()
+            screen_konular(token, username)
         elif idx == 14:
+            screen_settings()
+        elif idx == 15:
             screen_auto(token)
         else:
             break

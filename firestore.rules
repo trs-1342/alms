@@ -1,0 +1,114 @@
+// Firebase Firestore Security Rules
+// Firebase Console → Firestore Database → Rules sekmesine yapıştır
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Yardımcı fonksiyonlar ─────────────────────────────────
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthed() &&
+        exists(/databases/$(database)/documents/students/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/students/$(request.auth.uid)).data.is_admin == true;
+    }
+
+    function isSuperAdmin() {
+      return isAdmin() &&
+        get(/databases/$(database)/documents/students/$(request.auth.uid)).data.admin_role == "super";
+    }
+
+    function isDeptAdmin(dept) {
+      return isAdmin() &&
+        get(/databases/$(database)/documents/students/$(request.auth.uid)).data.admin_role == "dept" &&
+        get(/databases/$(database)/documents/students/$(request.auth.uid)).data.admin_department == dept;
+    }
+
+    function canManageTopic(topicDept) {
+      return isSuperAdmin() || isDeptAdmin(topicDept);
+    }
+
+    // ── Öğrenci kayıtları ─────────────────────────────────────
+    // Her öğrenci kendi kaydını okuyup yazabilir.
+    // Admin alanlarını (is_admin, admin_role) sadece super admin değiştirebilir.
+    match /students/{studentHash} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed() && (
+        // Kendi kaydını admin alanları hariç güncelleyebilir
+        !request.resource.data.diff(resource.data)
+          .affectedKeys().hasAny(["is_admin", "admin_role", "admin_faculty", "admin_department"])
+        ||
+        // Super admin her şeyi güncelleyebilir
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── Sınav konuları ────────────────────────────────────────
+    match /topics/{topicId} {
+      // Liste: tüm authenticate kullanıcılar listeleyebilir (client-side filtrele)
+      allow list: if isAuthed();
+      // Tekil okuma: reddedilenleri sadece admin görebilir
+      allow get: if isAuthed() && (
+        resource.data.status != "rejected" ||
+        canManageTopic(resource.data.department)
+      );
+
+      // Yeni konu ekleyebilir (rate limit: 30 dakikada bir)
+      allow create: if isAuthed() &&
+        request.resource.data.keys().hasAll(
+          ["exam_type", "course_code", "topics_list", "submitted_by",
+           "submitted_at", "votes_up", "votes_down", "status"]
+        ) &&
+        request.resource.data.status == "active" &&
+        request.resource.data.votes_up == 0 &&
+        request.resource.data.votes_down == 0 &&
+        (
+          !exists(/databases/$(database)/documents/user_limits/$(request.auth.uid)) ||
+          request.time > get(/databases/$(database)/documents/user_limits/$(request.auth.uid)).data.last_topic_at + duration.value(30, 'm')
+        );
+
+      // Güncelleme: oy sayaçları VEYA admin işlemleri
+      allow update: if isAuthed() && (
+        // Sadece oy alanları güncelleniyorsa (community vote)
+        request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly(["votes_up", "votes_down", "trust_score"])
+        ||
+        // Admin: status, admin_note, reviewed_at, reviewed_by güncelleyebilir
+        (canManageTopic(resource.data.department) &&
+         request.resource.data.diff(resource.data)
+           .affectedKeys()
+           .hasOnly(["status", "admin_note", "reviewed_at", "reviewed_by"]))
+      );
+
+      // Silme: sadece admin
+      allow delete: if canManageTopic(resource.data.department);
+    }
+
+    // ── Kullanıcı limitleri (rate limiting) ──────────────────
+    // Her kullanıcı sadece kendi limitini okuyup güncelleyebilir.
+    // Sadece last_topic_at alanına yazılabilir.
+    match /user_limits/{uid} {
+      allow read:  if isAuthed() && request.auth.uid == uid;
+      allow write: if isAuthed() && request.auth.uid == uid &&
+        request.resource.data.keys().hasOnly(["last_topic_at"]);
+    }
+
+    // ── Oylar ────────────────────────────────────────────────
+    match /votes/{voteId} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed() &&
+        request.resource.data.keys().hasAll(
+          ["student_hash", "topic_id", "vote", "voted_at"]
+        ) &&
+        request.resource.data.vote in ["up", "down"];
+      allow update: if false;   // Oy değiştirilemez
+      allow delete: if isSuperAdmin();
+    }
+  }
+}

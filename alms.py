@@ -36,6 +36,17 @@ alms.py — ALMS İndirici Ana Giriş Noktası
   alms duyurular                  → kısayol: duyurular ekranı
   alms transkript                 → kısayol: transkript ekranı
   alms program                    → kısayol: ders programı ekranı
+  alms devamsizlik                → kısayol: devamsızlık durumu
+  alms notlar                     → kısayol: ders notları
+  alms sinav                      → kısayol: sınav tarihleri
+
+── Sınav Konuları (Firebase) ───────────────────────────────
+  alms konular                    → sınav konularını listele
+  alms konular --ekle             → yeni konu gir
+  alms konular --vize             → sadece vize konuları
+  alms konular --final            → sadece final konuları
+  alms konular --ders FIZ108      → belirli ders konuları
+  alms konular --setup            → Firebase bağlantısını kur
 
 ── Güncelleme & Sistem ─────────────────────────────────
   alms update                     → güncelleme yükle
@@ -212,7 +223,8 @@ def build_parser() -> argparse.ArgumentParser:
                             "download", "today", "open",
                             "status", "stats", "log", "export",
                             "logout", "config", "obis", "update",
-                            "transkript", "program", "duyurular", "takvim"],
+                            "transkript", "program", "duyurular", "takvim",
+                            "devamsizlik", "notlar", "sinav", "konular"],
                    help="Çalıştırılacak komut (varsayılan: menu)")
     p.add_argument("--version", action="store_true",
                    help="Sürüm bilgisini göster ve güncelleme var mı kontrol et")
@@ -238,6 +250,16 @@ def build_parser() -> argparse.ArgumentParser:
                    help="sync: daha önce indirilenler dahil tümünü indir")
     p.add_argument("--force", action="store_true",
                    help="Dosya diskde olsa bile yeniden indir (--all ile benzer)")
+    p.add_argument("--ekle", action="store_true",
+                   help="konular: yeni sınav konusu gir")
+    p.add_argument("--vize", action="store_true",
+                   help="konular: sadece vize konularını göster")
+    p.add_argument("--final", action="store_true",
+                   help="konular: sadece final konularını göster")
+    p.add_argument("--ders", metavar="KOD",
+                   help="konular: belirli ders koduna göre filtrele")
+    p.add_argument("--oyla", metavar="ID",
+                   help="konular: belirli konuya oy ver (ID)")
     return p
 
 
@@ -522,6 +544,18 @@ def main():
         log.error("Giriş yapılamadı: %s", e)
         sys.exit(1)
 
+    # Firebase: öğrenci no ile deterministik hesap — arka planda, bloklamaz
+    if username:
+        try:
+            import threading
+            from core.firebase import firebase_login, is_configured
+            if is_configured():
+                threading.Thread(
+                    target=firebase_login, args=(str(username),), daemon=True
+                ).start()
+        except Exception:
+            pass
+
     try:
         if args.command in ("menu", None):
             cmd_menu(token, username)
@@ -570,6 +604,24 @@ def main():
         elif args.command == "takvim":
             from core.obis import get_lms_zaman_cizelgesi, print_zaman_cizelgesi
             print_zaman_cizelgesi(get_lms_zaman_cizelgesi(token))
+        elif args.command == "devamsizlik":
+            from core.obis import get_session, get_devamsizlik, print_devamsizlik
+            s = get_session()
+            if s:
+                print_devamsizlik(get_devamsizlik(s))
+        elif args.command == "notlar":
+            from core.obis import get_session, get_notlar, print_notlar
+            s = get_session()
+            if s:
+                print_notlar(get_notlar(s))
+        elif args.command == "sinav":
+            from core.obis import get_session, get_sinav_tarihleri, print_sinav_tarihleri
+            s = get_session()
+            if s:
+                print_sinav_tarihleri(get_sinav_tarihleri(s))
+        elif args.command == "konular":
+            from core.topics import topics_main
+            topics_main(args, username)
     except KeyboardInterrupt:
         print("\nÇıkılıyor...")
     except Exception as e:
