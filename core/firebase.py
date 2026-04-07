@@ -23,6 +23,7 @@ from typing import Any
 import requests
 
 from utils.paths import CONFIG_DIR
+from utils.term import ic
 
 log = logging.getLogger(__name__)
 
@@ -133,11 +134,11 @@ def setup_firebase(as_admin: bool = False):
         auth_domain = input("  authDomain (boş OK): ").strip()
         app_id      = input("  appId      (boş OK): ").strip()
     except (KeyboardInterrupt, EOFError):
-        print("\n❌ İptal edildi.")
+        print(f"\n{ic('❌','[x]')} İptal edildi.")
         return False
 
     if not api_key or not project_id:
-        print("❌ apiKey ve projectId zorunlu.")
+        print(f"{ic('❌','[x]')} apiKey ve projectId zorunlu.")
         return False
 
     extras = {}
@@ -149,17 +150,17 @@ def setup_firebase(as_admin: bool = False):
     ok = _test_api_key(api_key)
 
     if ok:
-        print("  ✅ Bağlantı başarılı!")
+        print(f"  {ic('✅','[OK]')} Bağlantı başarılı!")
         if as_admin:
             save_repo_config(api_key, project_id, **extras)
-            print(f"\n  📄 {_REPO_CONFIG} dosyası oluşturuldu.")
+            print(f"\n  {ic('📄','[file]')} {_REPO_CONFIG} dosyası oluşturuldu.")
             print("  → git add firebase_config.json && git commit -m 'firebase config'")
             print("  → git push — diğer kullanıcılar güncelleyince otomatik alır")
         else:
             save_local_config(api_key, project_id, **extras)
         return True
     else:
-        print("  ❌ Bağlantı başarısız!")
+        print(f"  {ic('❌','[x]')} Bağlantı başarısız!")
         print()
         print("  Kontrol edin:")
         print("  • Firebase Console → Authentication → Anonymous → Enabled mi?")

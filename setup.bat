@@ -126,11 +126,23 @@ if errorlevel 1 (
 )
 echo   [OK] Paketler yuklendi.
 
+:: ── Konsol font ayarı (Consolas, yonetici gerektirmez) ────────
+reg add "HKCU\Console\ALMS" /v "FaceName"   /t REG_SZ    /d "Consolas"  /f >nul 2>&1
+reg add "HKCU\Console\ALMS" /v "FontSize"   /t REG_DWORD /d 0x000E0000  /f >nul 2>&1
+reg add "HKCU\Console\ALMS" /v "FontWeight" /t REG_DWORD /d 400         /f >nul 2>&1
+reg add "HKCU\Console\ALMS" /v "FontFamily" /t REG_DWORD /d 54          /f >nul 2>&1
+reg add "HKCU\Console\ALMS" /v "CodePage"   /t REG_DWORD /d 65001       /f >nul 2>&1
+reg add "HKCU\Console\ALMS" /v "VirtualTerminalLevel" /t REG_DWORD /d 1 /f >nul 2>&1
+echo   [OK] Konsol font ayarlandi (Consolas).
+
 :: ── alms.bat wrapper (venv Python kullanir) ──────────────────
 set WRAPPER=%SCRIPT_DIR%\alms.bat
-echo @echo off > "%WRAPPER%"
-echo setlocal >> "%WRAPPER%"
-echo "%PY%" "%SCRIPT_DIR%\alms.py" %%* >> "%WRAPPER%"
+(
+    echo @echo off
+    echo title ALMS
+    echo chcp 65001 ^>nul 2^>^&1
+    echo "%PY%" "%SCRIPT_DIR%\alms.py" %%*
+) > "%WRAPPER%"
 echo   [OK] alms.bat olusturuldu.
 
 :: ── PATH'e ekle ───────────────────────────────────────────────

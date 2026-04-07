@@ -60,14 +60,13 @@ EXAM_TYPES = {
     "4": "butunleme",
 }
 
+# ── Terminal yetenek tespiti ──────────────────────────────────
+from utils.term import USE_COLOR as _USE_COLOR, ic
+
 # ── Renk yardımcıları ─────────────────────────────────────────
 
 def _c(code, txt):
-    import sys, platform, os
-    use = sys.stdout.isatty() and (
-        platform.system() != "Windows" or os.environ.get("WT_SESSION")
-    )
-    return f"\033[{code}m{txt}\033[0m" if use else txt
+    return f"\033[{code}m{txt}\033[0m" if _USE_COLOR else txt
 
 def _cyan(t):   return _c("96", t)
 def _green(t):  return _c("92", t)
@@ -274,13 +273,13 @@ def _trust_score(up: int, down: int) -> float:
 
 def _trust_label(score: float, status: str) -> str:
     if status == "approved":
-        return _green("✅ Onaylı")
+        return _green(f"{ic('✅','[OK]')} Onaylı")
     if status == "rejected":
-        return _red("❌ Reddedildi")
-    if score >= 8:   return _green(f"⭐ {score}/10")
-    if score >= 6:   return _yellow(f"👍 {score}/10")
-    if score >= 4:   return _dim(f"⚪ {score}/10")
-    return _red(f"⚠️  {score}/10")
+        return _red(f"{ic('❌','[x]')} Reddedildi")
+    if score >= 8:   return _green(f"{ic('⭐','[*]')} {score}/10")
+    if score >= 6:   return _yellow(f"{ic('👍','[+]')} {score}/10")
+    if score >= 4:   return _dim(f"{ic('⚪','[ ]')} {score}/10")
+    return _red(f"{ic('⚠️','[!]')}  {score}/10")
 
 
 # ── Konuları yazdır ───────────────────────────────────────────
@@ -347,7 +346,7 @@ def submit_topic(student_no: str) -> bool:
     from core.firebase import add_document, student_hash, is_configured
 
     if not is_configured():
-        print("\n  ⚠️  Firebase bağlantısı kurulmamış.")
+        print(f"\n  {ic('⚠️','[!]')}  Firebase bağlantısı kurulmamış.")
         print("  Kurmak için: alms konular --setup\n")
         return False
 
@@ -445,11 +444,11 @@ def submit_topic(student_no: str) -> bool:
                 continue
             current_len = len("\n".join(lines + [line]))
             if current_len > _MAX_TOPIC_CHARS:
-                print(f"  ⚠️  Karakter sınırına ulaşıldı ({_MAX_TOPIC_CHARS}). Bu satır eklenmedi.")
+                print(f"  {ic('⚠️','[!]')}  Karakter sınırına ulaşıldı ({_MAX_TOPIC_CHARS}). Bu satır eklenmedi.")
                 break
             lines.append(line)
         if not lines:
-            print("  ❌ Konu girilmedi.")
+            print(f"  {ic('❌','[x]')} Konu girilmedi.")
             return False
         raw_text = "\n".join(lines)
         # Virgülle ayrılmışsa listeye çevir de
@@ -471,13 +470,13 @@ def submit_topic(student_no: str) -> bool:
                 break
             topics_list.append(konu)
         if not topics_list:
-            print("  ❌ Konu girilmedi.")
+            print(f"  {ic('❌','[x]')} Konu girilmedi.")
             return False
         raw_text = "; ".join(topics_list)
 
     # Karakter sınırı kontrolü
     if len(raw_text) > _MAX_TOPIC_CHARS:
-        print(f"\n  ⚠️  Konu metni çok uzun: {len(raw_text)} karakter "
+        print(f"\n  {ic('⚠️','[!]')}  Konu metni çok uzun: {len(raw_text)} karakter "
               f"(maks. {_MAX_TOPIC_CHARS}).")
         print(f"  Lütfen daha kısa yazın veya gereksiz ayrıntıları çıkarın.\n")
         return False
@@ -555,11 +554,11 @@ def submit_topic(student_no: str) -> bool:
                 set_document("user_limits", uid, {"last_topic_at": now_dt})
         except Exception:
             pass
-        print(f"\n  {_green('✅ Kaydedildi!')}  ID: {_dim(doc_id[:8])}")
+        print(f"\n  {_green(ic('✅','[OK]') + ' Kaydedildi!')}  ID: {_dim(doc_id[:8])}")
         print(f"  {_dim('Diğer öğrenciler görebilir ve oy verebilir.')}\n")
         return True
 
-    print(f"  {_red('❌')} Kayıt başarısız.")
+    print(f"  {_red(ic('❌','[x]'))} Kayıt başarısız.")
     print(f"  {_dim('Olası nedenler:')}")
     print(f"  {_dim('• Son 30 dakikada zaten bir konu eklediniz (spam koruması)')}")
     print(f"  {_dim('• İnternet bağlantısı yok')}")
@@ -577,14 +576,14 @@ def vote_topic(topic_id_prefix: str, student_no: str) -> bool:
     docs  = _fetch_all_topics()
     topic = next((t for t in docs if (t.get("_id") or "").startswith(topic_id_prefix)), None)
     if not topic:
-        print(f"  ❌ Konu bulunamadı: {topic_id_prefix}")
+        print(f"  {ic('❌','[x]')} Konu bulunamadı: {topic_id_prefix}")
         return False
 
     tid   = topic["_id"]
     shash = student_hash(student_no)
     existing = get_document("votes", f"{shash}_{tid}")
     if existing:
-        print(f"  ⚠️  Bu konuya zaten oy verdiniz: {existing.get('vote','?')}")
+        print(f"  {ic('⚠️','[!]')}  Bu konuya zaten oy verdiniz: {existing.get('vote','?')}")
         return False
 
     print(f"\n  {_cyan(topic.get('course_code','?'))} "
@@ -594,7 +593,10 @@ def vote_topic(topic_id_prefix: str, student_no: str) -> bool:
         print(f"  • {k}")
     print()
 
-    oy_idx = _arrow_menu("Oyunuz:", ["👍 Doğru — bilgi güvenilir", "👎 Yanlış — bilgi hatalı"])
+    oy_idx = _arrow_menu("Oyunuz:", [
+        f"{ic('👍','[+]')} Doğru — bilgi güvenilir",
+        f"{ic('👎','[-]')} Yanlış — bilgi hatalı",
+    ])
     if oy_idx < 0:
         return False
     vote = "up" if oy_idx == 0 else "down"
@@ -605,7 +607,7 @@ def vote_topic(topic_id_prefix: str, student_no: str) -> bool:
         "vote": vote, "voted_at": now,
     })
     if not vote_ok:
-        print(f"\n  {_red('❌')} Oy kaydedilemedi — bağlantı hatası veya izin sorunu.\n")
+        print(f"\n  {_red(ic('❌','[x]'))} Oy kaydedilemedi — bağlantı hatası veya izin sorunu.\n")
         return False
 
     up   = topic.get("votes_up",   0) + (1 if vote == "up"   else 0)
@@ -616,7 +618,7 @@ def vote_topic(topic_id_prefix: str, student_no: str) -> bool:
         "trust_score": score,
     })
 
-    emoji = _green("👍 Doğru") if vote == "up" else _red("👎 Yanlış")
+    emoji = _green(f"{ic('👍','[+]')} Doğru") if vote == "up" else _red(f"{ic('👎','[-]')} Yanlış")
     print(f"\n  {emoji} oyunuz kaydedildi.  Skor: {_trust_label(score, 'active')}\n")
     return True
 
@@ -628,17 +630,17 @@ def admin_review(topic_id_prefix: str, student_no: str, action: str, note: str =
 
     admin, role, dept = is_admin(student_no)
     if not admin:
-        print("  ❌ Admin yetkiniz yok.")
+        print(f"  {ic('❌','[x]')} Admin yetkiniz yok.")
         return False
 
     docs  = _fetch_all_topics()
     topic = next((t for t in docs if (t.get("_id") or "").startswith(topic_id_prefix)), None)
     if not topic:
-        print(f"  ❌ Konu bulunamadı: {topic_id_prefix}")
+        print(f"  {ic('❌','[x]')} Konu bulunamadı: {topic_id_prefix}")
         return False
 
     if role == "dept" and dept and topic.get("department") != dept:
-        print(f"  ❌ Bu konu sizin bölümünüze ait değil.")
+        print(f"  {ic('❌','[x]')} Bu konu sizin bölümünüze ait değil.")
         return False
 
     status = "approved" if action == "approve" else "rejected"
@@ -650,9 +652,12 @@ def admin_review(topic_id_prefix: str, student_no: str, action: str, note: str =
         "reviewed_by": student_hash(student_no),
     })
     if not ok:
-        print(f"  {_red('❌')} Güncelleme başarısız — bağlantı veya izin hatası.\n")
+        print(f"  {_red(ic('❌','[x]'))} Güncelleme başarısız — bağlantı veya izin hatası.\n")
         return False
-    emoji = _green("✅ Onaylandı") if status == "approved" else _red("❌ Reddedildi")
+    emoji = (
+        _green(f"{ic('✅','[OK]')} Onaylandı") if status == "approved"
+        else _red(f"{ic('❌','[x]')} Reddedildi")
+    )
     print(f"\n  {emoji}: {topic.get('course_code')} — {topic.get('exam_type','').upper()}\n")
     return True
 
@@ -667,7 +672,7 @@ def topics_main(args=None, username: str = ""):
         return
 
     if not is_configured():
-        print(f"\n  {_yellow('⚠️  Firebase bağlantısı kurulmamış.')}")
+        print(f"\n  {_yellow(ic('⚠️','[!]') + '  Firebase bağlantısı kurulmamış.')}")
         print(f"  {_dim('Kurmak için: alms konular --setup')}\n")
         return
 
@@ -692,14 +697,14 @@ def topics_main(args=None, username: str = ""):
 
     if vote_id:
         if not student_no:
-            print("  ❌ Öğrenci bilgisi alınamadı — alms logout && alms setup deneyin.")
+            print(f"  {ic('❌','[x]')} Öğrenci bilgisi alınamadı — alms logout && alms setup deneyin.")
             return
         vote_topic(vote_id, student_no)
         return
 
     if add_mode:
         if not student_no:
-            print("  ❌ Öğrenci bilgisi alınamadı — alms logout && alms setup deneyin.")
+            print(f"  {ic('❌','[x]')} Öğrenci bilgisi alınamadı — alms logout && alms setup deneyin.")
             return
         submit_topic(student_no)
         return

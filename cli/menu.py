@@ -10,10 +10,8 @@ from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
 
-# ─── ANSI Renkler ─────────────────────────────────────────────
-_USE_COLOR = sys.stdout.isatty() and (
-    platform.system() != "Windows" or os.environ.get("WT_SESSION")
-)
+# ─── Terminal yetenek tespiti (utils/term.py) ─────────────────
+from utils.term import USE_COLOR as _USE_COLOR, USE_EMOJI as _USE_EMOJI, ic
 
 def _c(code, text):
     return f"\033[{code}m{text}\033[0m" if _USE_COLOR else text
@@ -75,9 +73,9 @@ TR = {
     "status_title":  "Sistem Durumu",
     "dup_removed":   "duplicate kaldırıldı",
     # Grup menüsü
-    "opt_files":     "📂  Dosyalar",
-    "opt_academic":  "🎓  Akademik",
-    "opt_reports":   "📊  Durum & Raporlar",
+    "opt_files":     "📂  Dosyalar" if _USE_EMOJI else "[D] Dosyalar",
+    "opt_academic":  "🎓  Akademik" if _USE_EMOJI else "[A] Akademik",
+    "opt_reports":   "📊  Durum & Raporlar" if _USE_EMOJI else "[R] Durum & Raporlar",
     "opt_notlar":    "Notlar",
     "opt_devamsizlik": "Devamsızlık",
     "opt_takvim_lms": "Zaman Çizelgesi (LMS)",
@@ -131,9 +129,9 @@ EN = {
     "status_title":  "System Status",
     "dup_removed":   "duplicates removed",
     # Group menu
-    "opt_files":     "📂  Files",
-    "opt_academic":  "🎓  Academic",
-    "opt_reports":   "📊  Status & Reports",
+    "opt_files":     "📂  Files"          if _USE_EMOJI else "[D] Files",
+    "opt_academic":  "🎓  Academic"       if _USE_EMOJI else "[A] Academic",
+    "opt_reports":   "📊  Status & Reports" if _USE_EMOJI else "[R] Status & Reports",
     "opt_notlar":    "Grades",
     "opt_devamsizlik": "Attendance",
     "opt_takvim_lms": "LMS Timeline",
@@ -794,13 +792,13 @@ def screen_status(token, username):
         if _ur and _ur[0]:
             _, count, remote_ver = _ur
             rv = f" → v{remote_ver}" if remote_ver else ""
-            upd_str = yellow(f"⬆️  {count} güncelleme mevcut{rv}  →  alms update")
+            upd_str = yellow(f"{ic('⬆️','[^]')}  {count} güncelleme mevcut{rv}  →  alms update")
         else:
             upd_str = green("Güncel")
     except Exception:
         upd_str = dim("kontrol edilmedi")
 
-    print(f"  🏷️   {bold('Sürüm')}      : {ver_str}  {upd_str}")
+    print(f"  {ic('🏷️','[v]')}   {bold('Sürüm')}      : {ver_str}  {upd_str}")
 
     # ── ALMS Token ────────────────────────────────────────────
     active = get_active_session()
@@ -811,30 +809,30 @@ def screen_status(token, username):
         mins = int((exp - now).total_seconds() / 60)
         token_str = (
             green(f"Geçerli ({mins} dk kaldı)") if mins > 30
-            else yellow(f"⚠️  Süresi dolmak üzere ({mins} dk kaldı)")
+            else yellow(f"{ic('⚠️','[!]')}  Süresi dolmak üzere ({mins} dk kaldı)")
             if mins > 0 else red("Süresi dolmuş")
         )
-        print(f"  👤  {bold('Kullanıcı')}  : {green(username)}")
-        print(f"  🔑  {bold('Token')}     : {token_str}")
+        print(f"  {ic('👤','[@]')}  {bold('Kullanıcı')}  : {green(username)}")
+        print(f"  {ic('🔑','[k]')}  {bold('Token')}     : {token_str}")
     else:
-        print(f"  🔑  {bold('Token')}     : {red('Süresi dolmuş')}")
+        print(f"  {ic('🔑','[k]')}  {bold('Token')}     : {red('Süresi dolmuş')}")
 
     dl = get_download_dir()
-    print(f"  📁  {bold('İndirme')}    : {dl}")
+    print(f"  {ic('📁','[f]')}  {bold('İndirme')}    : {dl}")
 
     if MANIFEST_FILE.exists():
         try:
             mf = json.loads(MANIFEST_FILE.read_text())
-            print(f"  📦  {bold('İndirilen')}  : {cyan(str(len(mf)) + ' dosya')}")
+            print(f"  {ic('📦','[p]')}  {bold('İndirilen')}  : {cyan(str(len(mf)) + ' dosya')}")
         except Exception:
             pass
 
     sched = get_schedule_status()
-    print(f"  🕐  {bold('Otomasyon')}  : {yellow(sched) if sched else dim(_t('no_schedule'))}")
+    print(f"  {ic('🕐','[t]')}  {bold('Otomasyon')}  : {yellow(sched) if sched else dim(_t('no_schedule'))}")
 
     reachable, msg = check_alms_reachable()
     net_str = green("Erişilebilir") if reachable else red(f"Erişilemiyor — {msg}")
-    print(f"  🌐  {bold('ALMS Ağ')}    : {net_str}")
+    print(f"  {ic('🌐','[n]')}  {bold('ALMS Ağ')}    : {net_str}")
 
     # ── OBİS oturum durumu ────────────────────────────────────
     try:
@@ -845,12 +843,12 @@ def screen_status(token, username):
             obis_str = green("Geçerli") if obis_ok else yellow("Sona ermiş  →  alms obis --setup")
         else:
             obis_str = dim("Kurulmamış  →  alms obis --setup")
-        print(f"  🎓  {bold('OBİS')}       : {obis_str}")
+        print(f"  {ic('🎓','[o]')}  {bold('OBİS')}       : {obis_str}")
     except Exception:
         pass
 
-    print(f"  💻  {bold('Platform')}   : {platform.system()} {platform.release()}")
-    print(f"  📂  {bold('Config')}     : {dim(str(CONFIG_DIR))}")
+    print(f"  {ic('💻','[s]')}  {bold('Platform')}   : {platform.system()} {platform.release()}")
+    print(f"  {ic('📂','[c]')}  {bold('Config')}     : {dim(str(CONFIG_DIR))}")
     print()
     pause()
 
