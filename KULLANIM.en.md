@@ -9,10 +9,11 @@
 ## Quick Start
 
 ```bash
-alms setup          # First-time setup (done once)
-alms                # Open menu
-alms sync           # Download new files
-alms obis --sinav   # View exam schedule
+alms setup             # First-time setup (done once)
+alms                   # Open menu
+alms sync              # Download new files
+alms obis --sinav      # View exam schedule
+alms cache --guncelle  # Save OBIS data for offline use
 ```
 
 ---
@@ -24,6 +25,41 @@ alms obis --sinav   # View exam schedule
 alms
 ```
 Opens the interactive menu. All features are accessible from here.
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PHOTO 1 — Main menu screenshot
+     Where to capture : run  alms  in terminal (no arguments)
+     File             : assets/foto-1-en.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Main Menu](assets/foto-1-en.png)
+
+```
+[1] Files
+    ├── Sync New Files
+    ├── Download Files (picker)
+    ├── List Courses
+    ├── Today's Schedule / Calendar
+    ├── Open Download Folder
+    └── Export
+
+[2] Academic
+    ├── Exam Schedule
+    ├── Grades
+    ├── Transcript & GPA
+    ├── Course Schedule
+    ├── Attendance
+    ├── Announcements
+    ├── LMS Timeline
+    ├── Exam Topics
+    └── Offline Cache
+
+[3] Status & Reports
+[4] Settings
+    ├── Settings
+    ├── Auto Run
+    └── Notification Automation
+[5] Exit
+```
 
 ---
 
@@ -43,9 +79,9 @@ Re-running shows reconfiguration options.
 <!-- ═══════════════════════════════════════════════════════════════
      PHOTO 2 — Sync progress bar screenshot
      Where to capture : while  alms sync  is running (████░░ bar visible)
-     File             : assets/foto-2.png
+     File             : assets/foto-2-en.png
      ═══════════════════════════════════════════════════════════════ -->
-![Sync Progress](assets/foto-2.png)
+![Sync Progress](assets/foto-2-en.png)
 
 ```
 alms sync                              # Download new files
@@ -156,9 +192,17 @@ Shows the last 30 sync/download records.
 ```
 alms export
 ```
-Exports the course list and downloaded file index.
+Exports the course list, downloaded file index, **and OBIS academic data**.
 Format: Markdown or JSON.
 Output: `~/ALMS/alms_index_DATE.md` or `.json`
+
+**What gets exported:**
+- Course list and file index
+- Exam schedule (if cached)
+- Grades (if cached)
+- Transcript (if cached)
+- Attendance (if cached)
+- Course schedule (if cached)
 
 ---
 
@@ -167,9 +211,9 @@ Output: `~/ALMS/alms_index_DATE.md` or `.json`
 <!-- ═══════════════════════════════════════════════════════════════
      PHOTO 3 — Exam schedule screenshot
      Where to capture : alms obis --sinav output (date + time list)
-     File             : assets/foto-3.png
+     File             : assets/foto-3-en.png
      ═══════════════════════════════════════════════════════════════ -->
-![Exam Schedule](assets/foto-3.png)
+![Exam Schedule](assets/foto-3-en.png)
 
 ```
 alms obis --setup              # Set up OBIS session (done once)
@@ -184,6 +228,9 @@ alms takvim                    # ALMS activity timeline (assignments, exams)
 alms duyurular                 # Shortcut: announcements screen
 alms transkript                # Shortcut: transcript screen
 alms program                   # Shortcut: course schedule screen
+alms devamsizlik               # Shortcut: attendance screen
+alms notlar                    # Shortcut: grades screen
+alms sinav                     # Shortcut: exam schedule screen
 ```
 
 **OBIS setup:**
@@ -209,6 +256,163 @@ Example exam schedule output:
 ──────────────────────────────────────────────────────────────────────
   MAT106     MATHEMATICS II                MIDTERM  17:00
 ```
+
+---
+
+### `alms cache` — Offline Cache
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PHOTO 5 — Cache status screen
+     Where to capture : alms cache  (some fresh, some stale entries)
+     File             : assets/foto-5-en.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Cache Status](assets/foto-5-en.png)
+
+Save OBIS data locally and view it without an internet connection.
+
+```
+alms cache                   # Show cache status
+alms cache --guncelle        # Fetch and cache all OBIS data
+alms cache --temizle         # Clear the cache
+```
+
+**What gets cached:**
+- Exam schedule
+- Course grades (assignments / midterm / final / letter)
+- Transcript & GPA
+- Weekly course schedule
+- Attendance status
+- Announcements
+
+**Usage scenario — exam day:**
+```bash
+# The night before (while connected):
+alms cache --guncelle
+
+# Exam morning (no internet):
+alms obis sinav        # ⚠  Showing cached data — 2026-04-07 23:41
+alms obis devamsizlik  # ⚠  Showing cached data
+```
+
+> When connected, OBIS screens automatically update the cache on each visit.
+> Cache files: `~/.config/alms/cache/` (Linux/macOS) or `%APPDATA%\alms\cache\` (Windows)
+
+**Status output example:**
+```
+  Offline Cache Status
+
+  Exam Schedule       fresh      2026-04-07 23:41  (8h ago)
+  Grades              fresh      2026-04-07 23:41  (8h ago)
+  Transcript          stale      2026-04-06 14:22  (33h ago)
+  Course Schedule     fresh      2026-04-07 23:41  (8h ago)
+  Attendance          fresh      2026-04-07 23:41  (8h ago)
+  Announcements       —          none
+```
+
+---
+
+### `alms konular` — Exam Topics
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PHOTO 4 — Exam topics list
+     Where to capture : alms konular  (with a few topics entered)
+     File             : assets/foto-4-en.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Exam Topics](assets/foto-4-en.png)
+
+Community-shared exam topics via Firebase. No extra setup needed — Firebase connects automatically once `alms setup` is done.
+
+```
+alms konular                    # List all topics
+alms konular --ekle             # Add a new topic
+alms konular --vize             # Midterm topics only
+alms konular --final            # Final topics only
+alms konular --ders FIZ108      # Topics for a specific course
+alms konular --oyla <id>        # Vote on a topic
+alms konular --setup            # Configure Firebase (developer only)
+```
+
+**Example topic list output:**
+```
+  ── Exam Topics ──
+
+  [1] FIZ108  MIDTERM  •  Weeks 1-4 topics
+      • Kinematics and dynamics
+      • Newton's laws
+      • Energy and work
+      👍 12  👎 1   ★★★★☆ Reliable  —  ID: a3f2c1
+      to vote: alms konular --oyla a3f2c1
+
+  [2] MAT106  MIDTERM  •  Derivatives and integrals
+      • Concept of limits
+      • Derivative rules
+      👍 8   👎 0   ★★★★★ Very Reliable  —  ID: b7e9d4
+```
+
+**Adding a new topic (`alms konular --ekle`):**
+1. Select exam type: Midterm / Final / Quiz / Resit
+2. Select faculty (from list or manual entry)
+3. Select department
+4. Enter class year and section
+5. Enter course code and name
+6. Enter topics (single message or list mode)
+7. Preview is shown, confirm to submit
+
+**Voting:**
+- Each student can vote once per topic
+- 👍 Correct — information is reliable / 👎 Incorrect — information is wrong
+- Votes cannot be changed or withdrawn
+
+**Trust Score:**
+| Score | Meaning |
+|-------|---------|
+| ★★★★★ | Very Reliable |
+| ★★★★☆ | Reliable |
+| ★★★☆☆ | Moderate |
+| ★★☆☆☆ | Questionable |
+| ★☆☆☆☆ | Unreliable |
+
+> **Privacy:** Student number is stored as SHA-256 hash. Real number is never visible on Firebase.
+> **Spam protection:** Each student can add one topic per 30 minutes.
+
+---
+
+### `alms notify-check` — Notification Check
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PHOTO 6 — Notification Automation settings screen
+     Where to capture : alms  →  Settings  →  Notification Automation
+     File             : assets/foto-6-en.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Notification Automation](assets/foto-6-en.png)
+
+Sends a desktop notification when new OBIS announcements, exams, or exam topics are added.
+
+```
+alms notify-check           # Show status, notify if new items found
+alms notify-check --quiet   # Silent check — sends notification only (for cron)
+```
+
+**Automatic scheduling — via menu:**
+
+`alms` → **[4] Settings → Notification Automation**
+
+- Enable → choose check interval (e.g. `1` hour)
+- Disable → removes the schedule
+- Reset Seen Items → clears seen records (all items will notify again on next check)
+
+| Platform | Method | Log |
+|----------|--------|-----|
+| Linux | crontab (`0 */N * * *`) | `~/.config/alms/notify.log` |
+| macOS | launchd | `~/Library/Application Support/alms/notify.log` |
+| Windows | Task Scheduler | `%APPDATA%\alms\notify.log` |
+
+**What it checks:**
+- OBIS announcements (when connected)
+- OBIS exam dates (when connected)
+- Firebase exam topics (even without internet — independent of ALMS)
+
+> Already-seen items are never re-notified. State is tracked in `~/.config/alms/notifier_state.json`.
 
 ---
 
@@ -264,7 +468,7 @@ Displays current settings in JSON format (sensitive values hidden).
 
 ## Automatic Downloads
 
-Configure via menu option **[16] Auto-run**.
+Configure via menu **Settings → Auto Run**.
 
 | Platform | Method | Log |
 |----------|--------|-----|
@@ -300,7 +504,16 @@ Update now? [Y/N]:
 ├── version.json                 # Version info
 ├── obis_session                 # Encrypted OBIS token
 ├── alms.log                     # Application log
-└── cron.log                     # Automation log
+├── cron.log                     # Automation log
+├── notify.log                   # Notification automation log
+├── notifier_state.json          # Seen notification records
+└── cache/                       # Offline cache
+    ├── sinav.json
+    ├── notlar.json
+    ├── transkript.json
+    ├── program.json
+    ├── devamsizlik.json
+    └── duyurular.json
 ```
 
 ---
@@ -314,6 +527,7 @@ Update now? [Y/N]:
 | SSL verification | Always enabled |
 | Log sanitization | Tokens/passwords never written to logs |
 | Config permissions | `chmod 700` (directory), `chmod 600` (files) |
+| Firebase privacy | Student number stored as SHA-256 hash, never in plain text |
 
 ---
 
@@ -372,4 +586,28 @@ git pull origin main
 **Windows — missing dependency:**
 ```bat
 .venv\Scripts\pip.exe install -r requirements.txt
+```
+
+**Cache corrupted or outdated:**
+```bash
+alms cache --temizle
+alms cache --guncelle
+```
+
+**Exam topics not loading (Firebase connection issue):**
+```bash
+# Check network connectivity
+alms status
+
+# Check Firebase configuration
+alms konular --setup
+```
+
+**Notification automation not working:**
+```bash
+# Test manually first
+alms notify-check
+
+# Re-configure the schedule
+# alms  →  Settings  →  Notification Automation  →  Enable
 ```

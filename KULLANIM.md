@@ -9,10 +9,11 @@
 ## Hızlı Başlangıç
 
 ```bash
-alms setup          # İlk kurulum (bir kez yapılır)
-alms                # Menü aç
-alms sync           # Yeni dosyaları indir
-alms obis --sinav   # Sınav tarihlerini gör
+alms setup             # İlk kurulum (bir kez yapılır)
+alms                   # Menü aç
+alms sync              # Yeni dosyaları indir
+alms obis --sinav      # Sınav tarihlerini gör
+alms cache --guncelle  # OBİS verilerini çevrimdışı için kaydet
 ```
 
 ---
@@ -24,6 +25,41 @@ alms obis --sinav   # Sınav tarihlerini gör
 alms
 ```
 İnteraktif menüyü açar. Tüm özellikler buradan erişilebilir.
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 1 — Ana menü ekran görüntüsü
+     Çekilecek yer : terminalde sadece  alms  komutunu çalıştırın
+     Dosya         : assets/foto-1-tr.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Ana Menü](assets/foto-1-tr.png)
+
+```
+[1] Dosyalar
+    ├── Yeni Dosyaları Senkronize Et
+    ├── Dosya İndir (seçici)
+    ├── Dersleri Listele
+    ├── Bugünkü Program / Takvim
+    ├── İndirme Klasörünü Aç
+    └── Dışa Aktar
+
+[2] Akademik
+    ├── Sınav Takvimi
+    ├── Notlar
+    ├── Transkript & Not Ortalaması
+    ├── Ders Programı
+    ├── Devamsızlık
+    ├── Duyurular
+    ├── Zaman Çizelgesi (LMS)
+    ├── Sınav Konuları
+    └── Çevrimdışı Önbellek
+
+[3] Durum & Raporlar
+[4] Ayarlar
+    ├── Ayarlar
+    ├── Otomatik Çalıştırma
+    └── Bildirim Otomasyonu
+[5] Çıkış
+```
 
 ---
 
@@ -43,9 +79,9 @@ Tekrar çalıştırıldığında yeniden yapılandırma seçenekleri sunar.
 <!-- ═══════════════════════════════════════════════════════════════
      FOTOĞRAF 2 — Sync progress bar ekran görüntüsü
      Çekilecek yer : alms sync çalışırken █████░░ bar görünürken
-     Dosya         : assets/foto-2.png
+     Dosya         : assets/foto-2-tr.png
      ═══════════════════════════════════════════════════════════════ -->
-![Sync Progress](assets/foto-2.png)
+![Sync Progress](assets/foto-2-tr.png)
 
 ```
 alms sync                              # Yeni dosyaları indir
@@ -156,9 +192,17 @@ Son 30 sync/indirme işleminin kaydını gösterir.
 ```
 alms export
 ```
-Ders listesini ve indirilen dosyaların indexini dışa aktarır.
+Ders listesini, indirilen dosyaların indexini **ve OBİS akademik verilerini** dışa aktarır.
 Format seçimi: Markdown veya JSON.
 Çıktı: `~/ALMS/alms_index_TARIH.md` veya `.json`
+
+**Dışa aktarılan veriler:**
+- Ders listesi ve dosya indexi
+- Sınav tarihleri (önbellekte varsa)
+- Ders notları (önbellekte varsa)
+- Transkript (önbellekte varsa)
+- Devamsızlık (önbellekte varsa)
+- Ders programı (önbellekte varsa)
 
 ---
 
@@ -167,9 +211,9 @@ Format seçimi: Markdown veya JSON.
 <!-- ═══════════════════════════════════════════════════════════════
      FOTOĞRAF 3 — Sınav takvimi ekran görüntüsü
      Çekilecek yer : alms obis --sinav çıktısı (tarih + saat listesi)
-     Dosya         : assets/foto-3.png
+     Dosya         : assets/foto-3-tr.png
      ═══════════════════════════════════════════════════════════════ -->
-![Sınav Takvimi](assets/foto-3.png)
+![Sınav Takvimi](assets/foto-3-tr.png)
 
 ```
 alms obis --setup              # OBİS oturumu kur (bir kez yapılır)
@@ -184,6 +228,9 @@ alms takvim                    # ALMS zaman çizelgesi (ödev, sınav)
 alms duyurular                 # Duyurular kısayolu
 alms transkript                # Transkript kısayolu
 alms program                   # Ders programı kısayolu
+alms devamsizlik               # Devamsızlık kısayolu
+alms notlar                    # Notlar kısayolu
+alms sinav                     # Sınav tarihleri kısayolu
 ```
 
 **OBİS kurulumu:**
@@ -209,6 +256,163 @@ Sınav takvimi örnek çıktı:
 ──────────────────────────────────────────────────────────────────────
   MAT106     MATEMATİK II                 VİZE     17:00
 ```
+
+---
+
+### `alms cache` — Çevrimdışı Önbellek
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 5 — Önbellek durum ekranı
+     Çekilecek yer : alms cache  (bazı veriler güncel, bazıları eski)
+     Dosya         : assets/foto-5-tr.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Önbellek Durumu](assets/foto-4-tr.png)
+
+OBİS verilerini yerel diske kaydet; internet olmadan görüntüle.
+
+```
+alms cache                   # Önbellek durumunu göster
+alms cache --guncelle        # Tüm OBİS verilerini çek ve kaydet
+alms cache --temizle         # Önbelleği temizle
+```
+
+**Önbelleklenen veriler:**
+- Sınav tarihleri
+- Ders notları (ödev / vize / final / harf)
+- Transkript & not ortalaması
+- Haftalık ders programı
+- Devamsızlık durumu
+- Duyurular
+
+**Kullanım senaryosu — sınav günü:**
+```bash
+# Dün akşam bağlantı varken:
+alms cache --guncelle
+
+# Sabah sınav salonunda (internet yok):
+alms obis sinav        # ⚠  Önbellekten gösteriliyor — 2026-04-07 23:41
+alms obis devamsizlik  # ⚠  Önbellekten gösteriliyor
+```
+
+> Bağlantı varsa OBİS ekranları her açıldığında önbellek otomatik güncellenir.
+> Önbellek dosyaları: `~/.config/alms/cache/` (Linux/macOS) veya `%APPDATA%\alms\cache\` (Windows)
+
+**Durum çıktısı örneği:**
+```
+  Çevrimdışı Önbellek Durumu
+
+  Sınav Tarihleri     taze       2026-04-07 23:41  (8s önce)
+  Ders Notları        taze       2026-04-07 23:41  (8s önce)
+  Transkript          eski       2026-04-06 14:22  (33s önce)
+  Ders Programı       taze       2026-04-07 23:41  (8s önce)
+  Devamsızlık         taze       2026-04-07 23:41  (8s önce)
+  Duyurular           —          yok
+```
+
+---
+
+### `alms konular` — Sınav Konuları
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 4 — Sınav konuları listesi
+     Çekilecek yer : alms konular  (birkaç konu girilmişken)
+     Dosya         : assets/foto-4-tr.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Sınav Konuları](assets/foto-5-tr.png)
+
+Firebase üzerinde öğrencilerin paylaştığı sınav konuları. `alms setup` ile OBİS girişi yapılmışsa Firebase **otomatik bağlanır** — ayrıca bir kurulum gerekmez.
+
+```
+alms konular                    # Tüm konuları listele
+alms konular --ekle             # Yeni konu gir
+alms konular --vize             # Sadece vize konuları
+alms konular --final            # Sadece final konuları
+alms konular --ders FIZ108      # Belirli ders konuları
+alms konular --oyla <id>        # Konuya oy ver
+alms konular --setup            # Firebase bağlantısını kur (geliştiriciye özel)
+```
+
+**Konu listesi örnek çıktı:**
+```
+  ── Sınav Konuları ──
+
+  [1] FIZ108  VİZE  •  1-4. hafta konuları
+      • Kinematik ve dinamik
+      • Newton yasaları
+      • Enerji ve iş
+      👍 12  👎 1   ★★★★☆ Güvenilir  —  ID: a3f2c1
+      oy vermek için: alms konular --oyla a3f2c1
+
+  [2] MAT106  VİZE  •  Türev ve integral
+      • Limit kavramı
+      • Türev kuralları
+      👍 8   👎 0   ★★★★★ Çok Güvenilir  —  ID: b7e9d4
+```
+
+**Yeni konu ekleme (`alms konular --ekle`):**
+1. Sınav türü seçilir: Vize / Final / Quiz / Bütünleme
+2. Fakülte seçilir (listeden veya manuel)
+3. Bölüm seçilir
+4. Sınıf ve şube girilir
+5. Ders kodu ve adı girilir
+6. Konular girilir (tek mesaj veya liste modunda)
+7. Önizleme gösterilir, onaylanır
+
+**Oylama:**
+- Her öğrenci aynı konuya bir kez oy verebilir
+- 👍 Doğru — bilgi güvenilir / 👎 Yanlış — bilgi hatalı
+- Oy geri alınamaz, değiştirilemez
+
+**Trust Score:**
+| Skor | Anlam |
+|------|-------|
+| ★★★★★ | Çok Güvenilir |
+| ★★★★☆ | Güvenilir |
+| ★★★☆☆ | Orta |
+| ★★☆☆☆ | Şüpheli |
+| ★☆☆☆☆ | Güvenilmez |
+
+> **Gizlilik:** Öğrenci numarası SHA-256 hash ile saklanır. Firebase'de gerçek numara görünmez.
+> **Spam koruması:** Her öğrenci 30 dakikada bir konu ekleyebilir.
+
+---
+
+### `alms notify-check` — Bildirim Kontrolü
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 6 — Bildirim Otomasyonu ayar ekranı
+     Çekilecek yer : alms  →  Ayarlar  →  Bildirim Otomasyonu
+     Dosya         : assets/foto-6-tr.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Bildirim Otomasyonu](assets/foto-6-tr.png)
+
+Yeni OBİS duyurusu, sınav veya sınav konusu eklendiğinde masaüstü bildirimi gönderir.
+
+```
+alms notify-check           # Durumu göster, yeni öğe varsa bildir
+alms notify-check --quiet   # Sessiz kontrol — sadece bildirim gönderir (cron için)
+```
+
+**Otomatik zamanlama — menü üzerinden:**
+
+`alms` → **[4] Ayarlar → Bildirim Otomasyonu**
+
+- Etkinleştir → kontrol aralığı seçilir (örn: `1` saat)
+- Devre Dışı Bırak → zamanlamayı kaldırır
+- Görülen Öğeleri Sıfırla → tüm görülen öğeleri temizler (bir sonraki kontrolde hepsi yeniden bildirir)
+
+| Platform | Yöntem | Log |
+|----------|--------|-----|
+| Linux | crontab (`0 */N * * *`) | `~/.config/alms/notify.log` |
+| macOS | launchd | `~/Library/Application Support/alms/notify.log` |
+| Windows | Task Scheduler | `%APPDATA%\alms\notify.log` |
+
+**Neyi kontrol eder:**
+- OBİS duyuruları (bağlantı varsa)
+- OBİS sınav tarihleri (bağlantı varsa)
+- Firebase sınav konuları (internet olmasa bile — ALMS'ten bağımsız)
+
+> Daha önce görülen öğeler tekrar bildirilmez. Durum `~/.config/alms/notifier_state.json` dosyasında tutulur.
 
 ---
 
@@ -264,7 +468,7 @@ Mevcut ayarları JSON formatında gösterir (hassas bilgiler gizlenir).
 
 ## Otomatik İndirme
 
-`alms` menüsünden **[16] Otomatik Çalıştırma** ile ayarlanır.
+`alms` menüsünden **Ayarlar → Otomatik Çalıştırma** ile ayarlanır.
 
 | Platform | Yöntem | Log |
 |----------|--------|-----|
@@ -300,7 +504,16 @@ Güncelleme varsa menü görünmeden önce sorulur:
 ├── version.json                 # Sürüm bilgisi
 ├── obis_session                 # Şifreli OBİS tokeni
 ├── alms.log                     # Uygulama logu
-└── cron.log                     # Otomasyon logu
+├── cron.log                     # Otomasyon logu
+├── notify.log                   # Bildirim otomasyon logu
+├── notifier_state.json          # Görülen bildirim kayıtları
+└── cache/                       # Çevrimdışı önbellek
+    ├── sinav.json
+    ├── notlar.json
+    ├── transkript.json
+    ├── program.json
+    ├── devamsizlik.json
+    └── duyurular.json
 ```
 
 ---
@@ -314,6 +527,7 @@ Güncelleme varsa menü görünmeden önce sorulur:
 | SSL doğrulama | Her zaman açık |
 | Log maskeleme | Token/şifre loga yazılmaz |
 | Config izinleri | `chmod 700` (dizin), `chmod 600` (dosyalar) |
+| Firebase gizlilik | Öğrenci no SHA-256 hash, gerçek numara görünmez |
 
 ---
 
@@ -372,4 +586,28 @@ git pull origin main
 **Windows — bağımlılık eksik:**
 ```bat
 .venv\Scripts\pip.exe install -r requirements.txt
+```
+
+**Önbellek bozuk veya eski:**
+```bash
+alms cache --temizle
+alms cache --guncelle
+```
+
+**Sınav konuları yüklenmiyor (Firebase bağlantısı yok):**
+```bash
+# İnternet bağlantısını kontrol et
+alms status
+
+# Firebase yapılandırmasını kontrol et
+alms konular --setup
+```
+
+**Bildirim otomasyonu çalışmıyor:**
+```bash
+# Manuel kontrol ile test et
+alms notify-check
+
+# Zamanlamayı yeniden kur
+# alms  →  Ayarlar  →  Bildirim Otomasyonu  →  Etkinleştir
 ```

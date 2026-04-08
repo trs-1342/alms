@@ -32,6 +32,11 @@ PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / "com.alms.scraper.plist"
 # Cron satırlarını tanımlamak için sabit etiket
 _CRON_TAG       = "# ALMS-SCHEDULER"
 _REBOOT_TAG     = "# ALMS-REBOOT"
+_NOTIFY_TAG     = "# ALMS-NOTIFY"
+
+# Bildirim otomasyonu için sabitler
+_NOTIFY_JOB_NAME = "ALMSNotifier"
+_NOTIFY_PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / "com.alms.notifier.plist"
 
 
 def _wrapper_script_path() -> Path:
@@ -360,4 +365,234 @@ def get_schedule_status() -> str | None:
         return launchd_status()
     elif system == "Windows":
         return schtasks_status()
+    return None
+
+
+# ─── Bildirim otomasyonu ─────────────────────────────────────────────────────
+
+def _notify_wrapper_path() -> Path:
+    from utils.paths import CONFIG_DIR
+    return CONFIG_DIR / "alms_notify.sh"
+
+
+def _write_notify_wrapper() -> Path:
+    """Bildirim kontrol wrapper script'i yaz."""
+    from utils.paths import CONFIG_DIR
+    log_file = CONFIG_DIR / "notify.log"
+    home     = Path.home()
+
+    script = f"""#!/bin/bash
+# ALMS bildirim kontrol — cron wrapper
+# Oluşturuldu: scheduler.py tarafından
+
+export HOME="{home}"
+export PATH="/usr/local/bin:/usr/bin:/bin"
+
+# Masaüstü bildirimi için DBUS/DISPLAY bul
+find_display() {{
+    for pid in $(pgrep -u "$USER" -x Xorg 2>/dev/null || pgrep -u "$USER" -x Xwayland 2>/dev/null); do
+        local d=$(cat /proc/"$pid"/environ 2>/dev/null | tr '\\0' '\\n' | grep '^DISPLAY=' | cut -d= -f2)
+        [ -n "$d" ] && echo "$d" && return
+    done
+    echo ":0"
+}}
+
+find_dbus() {{
+    local uid=$(id -u)
+    local bus="/run/user/$uid/bus"
+    [ -S "$bus" ] && echo "unix:path=$bus" && return
+    for pid in $(pgrep -u "$USER" dbus-daemon 2>/dev/null | head -1); do
+        cat /proc/"$pid"/environ 2>/dev/null | tr '\\0' '\\n' | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2- && return
+    done
+}}
+
+PYTHON="{PYTHON}"
+SCRIPT="{SCRIPT}"
+LOG="{log_file}"
+LOCK="{home}/.config/alms/.notify.lock"
+
+# Atomik lock
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+echo $$ >&9
+trap "rm -f '$LOCK'" EXIT
+
+disp=$(find_display)
+dbus=$(find_dbus)
+export DISPLAY="$disp"
+[ -n "$dbus" ] && export DBUS_SESSION_BUS_ADDRESS="$dbus"
+
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [CHECK]" >> "$LOG"
+"$PYTHON" "$SCRIPT" notify-check --quiet 2>&1 >> "$LOG"
+
+# Log 512KB üzerindeyse eski logu arşivle
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 524288 ]; then
+    mv "$LOG" "$LOG.old"
+fi
+"""
+    path = _notify_wrapper_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(script)
+    path.chmod(0o755)
+    return path
+
+
+def _notify_cron_entry(interval_hours: int, wrapper: Path) -> list[str]:
+    """Her N saatte bir çalışacak cron satırları."""
+    if interval_hours <= 1:
+        return [f"0 * * * * {wrapper} {_NOTIFY_TAG}\n"]
+    return [f"0 */{interval_hours} * * * {wrapper} {_NOTIFY_TAG}\n"]
+
+
+def notify_cron_add(interval_hours: int = 1) -> bool:
+    wrapper  = _write_notify_wrapper()
+    current  = _get_crontab()
+    lines    = [l for l in current.splitlines(keepends=True) if _NOTIFY_TAG not in l]
+    lines   += _notify_cron_entry(interval_hours, wrapper)
+    new_cron = "".join(lines)
+    with tempfile.NamedTemporaryFile("w", suffix=".cron", delete=False) as f:
+        f.write(new_cron)
+        tmp = f.name
+    result = subprocess.run(["crontab", tmp])
+    os.unlink(tmp)
+    return result.returncode == 0
+
+
+def notify_cron_remove() -> bool:
+    current  = _get_crontab()
+    lines    = [l for l in current.splitlines(keepends=True) if _NOTIFY_TAG not in l]
+    new_cron = "".join(lines)
+    with tempfile.NamedTemporaryFile("w", suffix=".cron", delete=False) as f:
+        f.write(new_cron)
+        tmp = f.name
+    result = subprocess.run(["crontab", tmp])
+    os.unlink(tmp)
+    wp = _notify_wrapper_path()
+    if wp.exists():
+        wp.unlink()
+    return result.returncode == 0
+
+
+def notify_cron_status() -> str | None:
+    for line in _get_crontab().splitlines():
+        if _NOTIFY_TAG in line:
+            return line.strip()
+    return None
+
+
+_NOTIFY_PLIST_TEMPLATE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.alms.notifier</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{python}</string>
+    <string>{script}</string>
+    <string>notify-check</string>
+    <string>--quiet</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>{interval_secs}</integer>
+  <key>StandardOutPath</key>
+  <string>{log}</string>
+  <key>StandardErrorPath</key>
+  <string>{log}</string>
+</dict>
+</plist>
+"""
+
+
+def notify_launchd_add(interval_hours: int, log_path: str) -> bool:
+    plist = _NOTIFY_PLIST_TEMPLATE.format(
+        python=PYTHON, script=SCRIPT,
+        interval_secs=interval_hours * 3600,
+        log=log_path,
+    )
+    _NOTIFY_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _NOTIFY_PLIST_PATH.write_text(plist)
+    subprocess.run(["launchctl", "unload", str(_NOTIFY_PLIST_PATH)], capture_output=True)
+    result = subprocess.run(["launchctl", "load", str(_NOTIFY_PLIST_PATH)])
+    return result.returncode == 0
+
+
+def notify_launchd_remove() -> bool:
+    if _NOTIFY_PLIST_PATH.exists():
+        subprocess.run(["launchctl", "unload", str(_NOTIFY_PLIST_PATH)], capture_output=True)
+        _NOTIFY_PLIST_PATH.unlink()
+    return True
+
+
+def notify_launchd_status() -> str | None:
+    return str(_NOTIFY_PLIST_PATH) if _NOTIFY_PLIST_PATH.exists() else None
+
+
+def notify_schtasks_add(interval_hours: int) -> bool:
+    cmd = [
+        "schtasks", "/Create", "/F",
+        "/TN", _NOTIFY_JOB_NAME,
+        "/TR", f'"{PYTHON}" "{SCRIPT}" notify-check --quiet',
+        "/SC", "HOURLY",
+        "/MO", str(interval_hours),
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    return result.returncode == 0
+
+
+def notify_schtasks_remove() -> bool:
+    result = subprocess.run(
+        ["schtasks", "/Delete", "/F", "/TN", _NOTIFY_JOB_NAME],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def notify_schtasks_status() -> str | None:
+    result = subprocess.run(
+        ["schtasks", "/Query", "/TN", _NOTIFY_JOB_NAME, "/FO", "LIST"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        for line in result.stdout.splitlines():
+            if "Next Run" in line or "Sonraki" in line:
+                return line.strip()
+    return None
+
+
+def add_notify_schedule(interval_hours: int = 1, log_path: str = "") -> bool:
+    system = platform.system()
+    if system == "Linux":
+        _ensure_cron_running()
+        return notify_cron_add(interval_hours)
+    elif system == "Darwin":
+        from utils.paths import CONFIG_DIR
+        lp = log_path or str(CONFIG_DIR / "notify.log")
+        return notify_launchd_add(interval_hours, lp)
+    elif system == "Windows":
+        return notify_schtasks_add(interval_hours)
+    return False
+
+
+def remove_notify_schedule() -> bool:
+    system = platform.system()
+    if system == "Linux":
+        return notify_cron_remove()
+    elif system == "Darwin":
+        return notify_launchd_remove()
+    elif system == "Windows":
+        return notify_schtasks_remove()
+    return False
+
+
+def get_notify_schedule_status() -> str | None:
+    system = platform.system()
+    if system == "Linux":
+        return notify_cron_status()
+    elif system == "Darwin":
+        return notify_launchd_status()
+    elif system == "Windows":
+        return notify_schtasks_status()
     return None

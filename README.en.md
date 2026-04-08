@@ -5,14 +5,14 @@
 # ALMS Downloader
 
 One-command access to IGU (Istanbul Gelisim University) ALMS and OBIS systems.
-Automatically downloads course materials and displays exam schedules.
+Automatically downloads course materials, displays exam schedules, and supports offline mode.
 
 <!-- ═══════════════════════════════════════════════════════════════
      PHOTO 1 — Main menu screenshot
      Where to capture : run  alms  in terminal (no arguments)
-     File             : assets/foto-1.png
+     File             : assets/foto-1-en.png
      ═══════════════════════════════════════════════════════════════ -->
-![Main Menu](assets/foto-1.png)
+![Main Menu](assets/foto-1-en.png)
 
 ---
 
@@ -201,12 +201,15 @@ alms.bat setup
 ## Basic Usage
 
 ```bash
-alms                # Open menu
-alms sync           # Download new files
-alms download       # Pick files interactively
-alms obis --sinav   # View exam schedule
-alms update         # Install updates
-alms --version      # Version + update check
+alms                        # Open menu
+alms sync                   # Download new files
+alms download               # Pick files interactively
+alms obis --sinav           # View exam schedule
+alms konular                # View exam topics (community)
+alms cache --guncelle       # Save OBIS data for offline use
+alms notify-check           # Check for new announcements/exams/topics
+alms update                 # Install updates
+alms --version              # Version + update check
 ```
 
 Full usage guide: **[USAGE.md](https://github.com/trs-1342/alms/blob/main/KULLANIM.en.md)**
@@ -229,7 +232,7 @@ Full usage guide: **[USAGE.md](https://github.com/trs-1342/alms/blob/main/KULLAN
 | `alms status` | System status |
 | `alms stats` | Statistics |
 | `alms log` | Activity log |
-| `alms export` | Export course index |
+| `alms export` | Export course index + OBIS data |
 | `alms open` | Open download folder |
 | `alms obis --setup` | Set up OBIS session |
 | `alms obis sinav` | Exam schedule |
@@ -239,6 +242,14 @@ Full usage guide: **[USAGE.md](https://github.com/trs-1342/alms/blob/main/KULLAN
 | `alms obis devamsizlik` | Attendance status |
 | `alms obis duyurular` | OBIS announcements (full content) |
 | `alms takvim` | ALMS activity timeline |
+| `alms konular` | List exam topics |
+| `alms konular --ekle` | Add a new exam topic |
+| `alms konular --oyla <id>` | Vote on a topic |
+| `alms cache` | Offline cache status |
+| `alms cache --guncelle` | Fetch and cache all OBIS data |
+| `alms cache --temizle` | Clear the cache |
+| `alms notify-check` | Check for new announcements/exams/topics |
+| `alms notify-check --quiet` | Silent check (for automation) |
 | `alms update` | Install updates |
 | `alms --version` | Version info |
 | `alms logout` | Delete saved credentials |
@@ -258,9 +269,80 @@ The session token remains valid until you log out.
 
 ---
 
+## Offline Mode
+
+Access OBIS data without an internet connection (exam day, off-campus, etc.):
+
+```bash
+# While connected, save data locally
+alms cache --guncelle
+
+# When offline, view cached data
+alms obis sinav          # shows from cache
+alms obis devamsizlik    # shows from cache
+alms obis program        # shows from cache
+alms obis notlar         # shows from cache
+alms obis transkript     # shows from cache
+```
+
+What gets cached:
+- Exam schedule
+- Course grades (assignments/midterm/final/letter)
+- Transcript & GPA
+- Weekly course schedule
+- Attendance status
+- Announcements
+
+> Cache is stored as JSON in `~/.config/alms/cache/`.
+> Each command automatically refreshes the cache when connected.
+
+---
+
+## Exam Topics (Community)
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PHOTO 4 — Exam topics list
+     Where to capture : alms konular  (with a few topics entered)
+     File             : assets/foto-4-en.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Exam Topics](assets/foto-4-en.png)
+
+Community-shared exam topics via Firebase. No extra setup needed — Firebase connects automatically once `alms setup` is done.
+
+```bash
+alms konular                    # List all topics
+alms konular --ekle             # Add a new topic
+alms konular --vize             # Midterm topics only
+alms konular --final            # Final topics only
+alms konular --ders FIZ108      # Topics for a specific course
+alms konular --oyla <id>        # Vote correct / incorrect on a topic
+```
+
+- Each student can add one topic per 30 minutes (spam protection)
+- Student numbers are never stored in plain text (SHA-256 hash)
+- Votes are immutable; trust score indicates reliability
+
+---
+
+## Notification Automation
+
+Sends a desktop notification when new announcements, exams, or exam topics are added.
+Runs as a **separate** scheduler from the file download automation.
+
+```bash
+alms notify-check           # Manual check (shows new items if any)
+alms notify-check --quiet   # Silent check — sends notification only
+```
+
+Configure automatic scheduling via menu **Settings → Notification Automation**:
+- Choose check frequency (e.g. every 1 hour)
+- Linux: crontab, macOS: launchd, Windows: Task Scheduler
+
+---
+
 ## Automatic Downloads
 
-Configured from menu option **[16] Auto-run**.
+Configure via menu **Settings → Auto Run**.
 
 | Platform | Method | Log |
 |----------|--------|-----|
@@ -276,6 +358,7 @@ Configured from menu option **[16] Auto-run**.
 - OBIS token stored encrypted
 - SSL verification always enabled
 - Tokens and passwords are never written to logs
+- Firebase: student number stored as SHA-256 hash, never in plain text
 
 ---
 

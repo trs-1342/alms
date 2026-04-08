@@ -79,6 +79,45 @@ TR = {
     "opt_notlar":    "Notlar",
     "opt_devamsizlik": "Devamsızlık",
     "opt_takvim_lms": "Zaman Çizelgesi (LMS)",
+    "opt_notify_auto":    "Bildirim Otomasyonu",
+    "notify_title":       "Bildirim Otomasyonu",
+    "notify_enable":      "Etkinleştir",
+    "notify_disable":     "Devre Dışı Bırak",
+    "notify_interval":    "Kontrol aralığı (saat, örn: 1)",
+    "notify_reset":       "Görülen Öğeleri Sıfırla",
+    "notify_status_on":   "Etkin",
+    "notify_status_off":  "Kapalı",
+    "notify_every":       "Her",
+    "notify_reset_done":  "Görülen öğeler sıfırlandı.",
+    "notify_disabled":    "Devre dışı.",
+    "notify_error":       "Hata.",
+    "opt_cache":          "Çevrimdışı Önbellek",
+    "cache_title":        "Çevrimdışı Önbellek",
+    "cache_update":       "Tüm Verileri Güncelle (İnternete Bağlı)",
+    "cache_clear":        "Önbelleği Temizle",
+    "cache_browse":       "Önbelleği Görüntüle",
+    "cache_fresh":        "taze",
+    "cache_stale":        "eski",
+    "cache_empty":        "yok",
+    "cache_updated":      "Önbellek güncellendi",
+    "cache_cleared":      "Önbellek temizlendi",
+    "cache_offline_hint": "İnternet bağlantısı yok — önbellekten gösteriliyor",
+    "cache_no_data":      "Bu veri önbellekte yok. Bağlantı kurarak önbelleği güncelleyin.",
+    "cache_status_title": "Önbellek Durumu",
+    "cache_ago":          "önce",
+    "cache_session_needed": "OBİS oturumu gerekiyor...",
+    "cache_connecting":   "OBİS bağlanıyor...",
+    "cache_session_failed": "OBİS oturumu kurulamadı.",
+    "cache_fetching":     "Veriler çekiliyor...",
+    "cache_done":         "güncellendi",
+    "cache_clear_confirm": "Tüm önbelleği temizle?",
+    "cache_files_deleted": "dosya silindi",
+    "cache_col_data":     "Veri",
+    "cache_col_status":   "Durum",
+    "cache_col_updated":  "Güncelleme",
+    "cache_hint_update":  "→ tüm verileri güncelle",
+    "cache_hint_clear":   "→ önbelleği temizle",
+    "cache_saved":        "önbelleğe kaydedildi",
 }
 
 EN = {
@@ -135,6 +174,45 @@ EN = {
     "opt_notlar":    "Grades",
     "opt_devamsizlik": "Attendance",
     "opt_takvim_lms": "LMS Timeline",
+    "opt_notify_auto":    "Notification Automation",
+    "notify_title":       "Notification Automation",
+    "notify_enable":      "Enable",
+    "notify_disable":     "Disable",
+    "notify_interval":    "Check interval (hours, e.g. 1)",
+    "notify_reset":       "Reset Seen Items",
+    "notify_status_on":   "Active",
+    "notify_status_off":  "Off",
+    "notify_every":       "Every",
+    "notify_reset_done":  "Seen items have been reset.",
+    "notify_disabled":    "Disabled.",
+    "notify_error":       "Error.",
+    "opt_cache":          "Offline Cache",
+    "cache_title":        "Offline Cache",
+    "cache_update":       "Update All Data (Requires Internet)",
+    "cache_clear":        "Clear Cache",
+    "cache_browse":       "Browse Cache",
+    "cache_fresh":        "fresh",
+    "cache_stale":        "stale",
+    "cache_empty":        "none",
+    "cache_updated":      "Cache updated",
+    "cache_cleared":      "Cache cleared",
+    "cache_offline_hint": "No internet connection — showing cached data",
+    "cache_no_data":      "No cached data. Connect to internet and update the cache.",
+    "cache_status_title": "Cache Status",
+    "cache_ago":          "ago",
+    "cache_session_needed": "OBIS session required...",
+    "cache_connecting":   "Connecting to OBIS...",
+    "cache_session_failed": "Could not establish OBIS session.",
+    "cache_fetching":     "Fetching data...",
+    "cache_done":         "updated",
+    "cache_clear_confirm": "Clear all cached data?",
+    "cache_files_deleted": "files deleted",
+    "cache_col_data":     "Data",
+    "cache_col_status":   "Status",
+    "cache_col_updated":  "Updated",
+    "cache_hint_update":  "→ fetch and cache all data",
+    "cache_hint_clear":   "→ clear the cache",
+    "cache_saved":        "saved to cache",
 }
 
 
@@ -520,11 +598,25 @@ def screen_sinav():
         session = get_session()
 
     if not session:
+        from core import cache as _cache
+        cached, updated_at = _cache.load("sinav")
+        if cached:
+            print(f"\n  {yellow('⚠')}  {_t('cache_offline_hint')}")
+            if updated_at:
+                print(f"  {dim(updated_at[:16].replace('T', ' '))}")
+            print()
+            print_sinav_tarihleri(cached)
+        else:
+            print(f"\n  {dim(_t('cache_no_data'))}")
         pause()
         return
 
     with Spinner("Sınav tarihleri alınıyor..."):
         sinavlar = get_sinav_tarihleri(session)
+
+    if sinavlar:
+        from core import cache as _cache
+        _cache.save("sinav", sinavlar)
 
     print_sinav_tarihleri(sinavlar)
     pause()
@@ -866,7 +958,16 @@ def screen_transkript():
     session = get_session()
     if not session:
         header(_t("opt_transkript"))
-        print(f"  {dim('OBİS oturumu yok — alms obis --setup')}")
+        from core import cache as _cache
+        cached, updated_at = _cache.load("transkript")
+        if cached:
+            print(f"\n  {yellow('⚠')}  {_t('cache_offline_hint')}")
+            if updated_at:
+                print(f"  {dim(updated_at[:16].replace('T', ' '))}")
+            print()
+            print_transkript(cached)
+        else:
+            print(f"\n  {dim(_t('cache_no_data'))}")
         pause(); return
 
     while True:
@@ -881,6 +982,9 @@ def screen_transkript():
             header(_t("opt_transkript"))
             with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Transkript yükleniyor..."):
                 data = get_transkript(session)
+            if data:
+                from core import cache as _cache
+                _cache.save("transkript", data)
             print_transkript(data)
             pause()
 
@@ -905,9 +1009,22 @@ def screen_program():
         pause(); return
     session = get_session()
     if not session:
+        from core import cache as _cache
+        cached, updated_at = _cache.load("program")
+        if cached:
+            print(f"\n  {yellow('⚠')}  {_t('cache_offline_hint')}")
+            if updated_at:
+                print(f"  {dim(updated_at[:16].replace('T', ' '))}")
+            print()
+            print_ders_programi(cached)
+        else:
+            print(f"\n  {dim(_t('cache_no_data'))}")
         pause(); return
     with __import__("utils.spinner", fromlist=["Spinner"]).Spinner("Ders programı yükleniyor..."):
         dersler = get_ders_programi(session)
+    if dersler:
+        from core import cache as _cache
+        _cache.save("program", dersler)
     print_ders_programi(dersler)
     pause()
 
@@ -1351,30 +1468,86 @@ def cmd_export(token):
             "progress": prog, "downloaded": downloaded,
         })
 
+    # OBİS verileri — önbellekten yükle (bağlantı gerektirmez)
+    from core import cache as _cache
+    from core.config import get as _cfg_get
+    lang = _cfg_get("language") or "tr"
+
+    obis_export = {}
+    for key in ["sinav", "notlar", "transkript", "devamsizlik", "program"]:
+        data, updated_at = _cache.load(key)
+        if data:
+            obis_export[key] = {"data": data, "cached_at": updated_at}
+
     def to_markdown() -> str:
+        is_tr = (lang == "tr")
         lines = [
-            "# ALMS Ders Materyali Indexi", "",
-            f"Oluşturuldu: {now}",
-            f"İndirme klasörü: `{dl_dir}`", "", "---", "",
+            ("# ALMS Ders Materyali İndex" if is_tr else "# ALMS Course Material Index"), "",
+            f"{'Oluşturuldu' if is_tr else 'Exported'}: {now}",
+            f"{'İndirme klasörü' if is_tr else 'Download folder'}: `{dl_dir}`", "", "---", "",
         ]
+        # Ders dosyaları
+        lines.append("## " + ("Ders Dosyaları" if is_tr else "Course Files") + "\n")
         for c in course_data:
-            lines += [f"## {c['code']} — {c['name']}", ""]
-            lines.append(f"İlerleme: %{c['progress']}")
+            lines += [f"### {c['code']} — {c['name']}", ""]
+            lines.append(f"{'İlerleme' if is_tr else 'Progress'}: %{c['progress']}")
             lines.append("")
             if c["downloaded"]:
-                lines += ["| Hafta | Dosya | Boyut |", "|-------|-------|-------|"]
+                week_lbl = "Hafta" if is_tr else "Week"
+                file_lbl = "Dosya" if is_tr else "File"
+                size_lbl = "Boyut" if is_tr else "Size"
+                lines += [f"| {week_lbl} | {file_lbl} | {size_lbl} |",
+                          "|-------|-------|-------|"]
                 for f in c["downloaded"]:
                     mb = f"{f['size']/1_048_576:.1f} MB"
                     lines.append(f"| {f['week']} | `{Path(f['path']).name}` | {mb} |")
             else:
-                lines.append("*Henüz indirilmedi*")
+                lines.append("*" + ("Henüz indirilmedi" if is_tr else "Not downloaded yet") + "*")
             lines.append("")
+        # OBİS bölümü
+        if obis_export:
+            lines += ["", "---", "",
+                      "## " + ("OBİS Akademik Veriler" if is_tr else "OBIS Academic Data"), ""]
+            _sinav = obis_export.get("sinav")
+            if _sinav:
+                lines.append("### " + ("Sınav Takvimi" if is_tr else "Exam Schedule"))
+                lines.append(f"\n*{'Önbellek' if is_tr else 'Cache'}: {(_sinav['cached_at'] or '')[:16]}*\n")
+                lines += ["| " + ("Ders" if is_tr else "Course") +
+                          " | " + ("Tür" if is_tr else "Type") +
+                          " | " + ("Tarih" if is_tr else "Date") +
+                          " | " + ("Saat" if is_tr else "Time") + " |",
+                          "|-------|------|-------|------|"]
+                for s in _sinav["data"]:
+                    lines.append(f"| {s.get('kod','')} | {s.get('tur','')} | {s.get('tarih','')} | {s.get('saat','')} |")
+                lines.append("")
+            _notlar = obis_export.get("notlar")
+            if _notlar:
+                lines.append("### " + ("Ders Notları" if is_tr else "Grades"))
+                lines.append(f"\n*{'Önbellek' if is_tr else 'Cache'}: {(_notlar['cached_at'] or '')[:16]}*\n")
+                for donem in _notlar["data"]:
+                    lines.append(f"#### {donem.get('donem','')}\n")
+                    lines += ["| " + ("Ders" if is_tr else "Course") +
+                              " | Vize | Final | Harf |",
+                              "|-------|------|-------|------|"]
+                    for d in donem.get("dersler", []):
+                        lines.append(f"| {d.get('kod','')} {d.get('ad','')[:20]} | {d.get('vize','')} | {d.get('final','')} | {d.get('harf','')} |")
+                    lines.append("")
+            _devamsizlik = obis_export.get("devamsizlik")
+            if _devamsizlik:
+                lines.append("### " + ("Devamsızlık" if is_tr else "Attendance"))
+                lines.append(f"\n*{'Önbellek' if is_tr else 'Cache'}: {(_devamsizlik['cached_at'] or '')[:16]}*\n")
+                for row in _devamsizlik["data"]:
+                    if isinstance(row, dict):
+                        lines.append(f"- {row.get('ders','?')}: {row.get('devamsizlik','?')}")
+                lines.append("")
         return "\n".join(lines)
 
     def to_json() -> str:
         return json.dumps({
-            "exported_at": now, "download_dir": str(dl_dir),
+            "exported_at": now,
+            "download_dir": str(dl_dir),
             "courses": course_data,
+            "obis": obis_export,
         }, ensure_ascii=False, indent=2)
 
     saved = []
@@ -1408,6 +1581,25 @@ def _token_warning(token, username):
     mins = int((exp - now).total_seconds() / 60)
     if mins <= 30:
         print(f"  {yellow(f'⚠️  Token {mins} dk sonra sona erecek.')}\n")
+
+
+def _cache_age_warning():
+    """Önbellekte 48+ saat eski veri varsa ana menüde uyarı göster."""
+    try:
+        from core import cache as _cache
+        from core.config import get
+        lang = get("language") or "tr"
+        stale = [e for e in _cache.status() if e["exists"] and (e["age_hours"] or 0) > 48]
+        if not stale:
+            return
+        n = len(stale)
+        if lang == "tr":
+            msg = f"💾  Önbellek: {n} veri 48+ saat eski — alms cache --guncelle"
+        else:
+            msg = f"💾  Cache: {n} item(s) 48h+ old — alms cache --guncelle"
+        print(f"  {dim(msg)}\n")
+    except Exception:
+        pass
 
 
 # ─── Güncelleme kontrolü ──────────────────────────────────────
@@ -1494,11 +1686,25 @@ def screen_notlar():
         from core.obis import get_session
         session = get_session()
     if not session:
+        from core import cache as _cache
+        cached, updated_at = _cache.load("notlar")
+        if cached:
+            print(f"\n  {yellow('⚠')}  {_t('cache_offline_hint')}")
+            if updated_at:
+                print(f"  {dim(updated_at[:16].replace('T', ' '))}")
+            print()
+            from core.obis import print_notlar
+            print_notlar(cached)
+        else:
+            print(f"\n  {dim(_t('cache_no_data'))}")
         pause()
         return
     with Spinner("Notlar alınıyor..."):
         from core.obis import get_notlar
         notlar = get_notlar(session)
+    if notlar:
+        from core import cache as _cache
+        _cache.save("notlar", notlar)
     from core.obis import print_notlar
     print_notlar(notlar)
 
@@ -1523,12 +1729,88 @@ def screen_devamsizlik():
         from core.obis import get_session
         session = get_session()
     if not session:
+        from core import cache as _cache
+        cached, updated_at = _cache.load("devamsizlik")
+        if cached:
+            print(f"\n  {yellow('⚠')}  {_t('cache_offline_hint')}")
+            if updated_at:
+                print(f"  {dim(updated_at[:16].replace('T', ' '))}")
+            print()
+            from core.obis import print_devamsizlik
+            print_devamsizlik(cached)
+        else:
+            print(f"\n  {dim(_t('cache_no_data'))}")
         pause()
         return
     with Spinner("Devamsızlık alınıyor..."):
         from core.obis import get_devamsizlik, print_devamsizlik
-        print_devamsizlik(get_devamsizlik(session))
+        devamsizlik = get_devamsizlik(session)
+    if devamsizlik:
+        from core import cache as _cache
+        _cache.save("devamsizlik", devamsizlik)
+    print_devamsizlik(devamsizlik)
     pause()
+
+
+# ─── Çevrimdışı Önbellek ekranı ──────────────────────────────
+def screen_cache(token: str):
+    """Çevrimdışı önbellek yönetimi."""
+    from core import cache as _cache
+
+    while True:
+        header(_t("cache_title"))
+        st = _cache.status()
+
+        print(f"  {bold(_t('cache_status_title'))}\n")
+        for entry in st:
+            if entry["exists"]:
+                h = entry["age_hours"]
+                age_str = f"{h:.0f}h" if h is not None else "?"
+                freshness = green(_t("cache_fresh")) if not entry["stale"] else yellow(_t("cache_stale"))
+                ts = (entry["updated_at"] or "")[:16].replace("T", " ")
+                ago_label = _t("cache_ago")
+                print(f"  {cyan('●')} {entry['label']:<20} {freshness:<20} {dim(ts)} {dim(f'({age_str} {ago_label})')}")
+            else:
+                print(f"  {dim('○')} {dim(entry['label']+'  — '+_t('cache_empty'))}")
+
+        print()
+        opts = [
+            _t("cache_update"),
+            _t("cache_clear"),
+            _t("back"),
+        ]
+        idx = menu(opts)
+
+        if idx == 0:
+            header(_t("cache_title"))
+            from utils.spinner import Spinner
+            print(f"  {_t('cache_session_needed')}\n")
+            from core.obis import get_session
+            with Spinner(_t("cache_connecting")):
+                session = get_session()
+            if not session:
+                print(f"  {red('❌')} {_t('cache_session_failed')}")
+                pause()
+                continue
+            print(f"  {dim(_t('cache_fetching'))}\n")
+            results = _cache.fetch_all(session, token)
+            ok = sum(1 for v in results.values() if v)
+            total = len(results)
+            for k, success in results.items():
+                icon = green("✅") if success else red("❌")
+                print(f"  {icon} {_cache.get_label(k)}")
+            print(f"\n  {bold(f'{ok}/{total}')} {_t('cache_done')}")
+            pause()
+
+        elif idx == 1:
+            header(_t("cache_title"))
+            if yn(_t("cache_clear_confirm"), default=False):
+                removed = _cache.clear()
+                print(f"  {green('✅')} {removed} {_t('cache_files_deleted')}")
+            pause()
+
+        else:
+            break
 
 
 # ─── Dosyalar alt menüsü ──────────────────────────────────────
@@ -1612,6 +1894,7 @@ def screen_akademik(token, username):
             _t("opt_duyurular"),
             _t("opt_takvim_lms"),
             _t("opt_konular"),
+            _t("opt_cache"),
             _t("back"),
         ]
         idx = menu(opts)
@@ -1631,6 +1914,8 @@ def screen_akademik(token, username):
             screen_takvim(token)
         elif idx == 7:
             screen_konular(token, username)
+        elif idx == 8:
+            screen_cache(token)
         else:
             break
 
@@ -1656,6 +1941,51 @@ def screen_raporlar(token, username):
             break
 
 
+# ─── Bildirim Otomasyonu ─────────────────────────────────────
+def screen_notify_settings():
+    from utils.scheduler import add_notify_schedule, remove_notify_schedule, get_notify_schedule_status
+    from utils.paths import CONFIG_DIR
+
+    while True:
+        header(_t("notify_title"))
+        st = get_notify_schedule_status()
+        status_str = green(_t("notify_status_on")) if st else dim(_t("notify_status_off"))
+        print(f"  {bold(_t('auto_status'))}: {status_str}")
+        if st:
+            print(f"  {dim(st)}")
+        print()
+
+        opts = [
+            _t("notify_enable"),
+            _t("notify_disable"),
+            _t("notify_reset"),
+            _t("back"),
+        ]
+        idx = menu(opts)
+
+        if idx == 0:
+            raw = ask(_t("notify_interval"), "1")
+            h = int(raw) if raw.isdigit() and 1 <= int(raw) <= 24 else 1
+            ok = add_notify_schedule(interval_hours=h, log_path=str(CONFIG_DIR / "notify.log"))
+            print(f"\n  {green('✅') if ok else red('❌')} "
+                  f"{_t('notify_every')} {h}h — alms notify-check --quiet")
+            pause()
+
+        elif idx == 1:
+            ok = remove_notify_schedule()
+            print(f"\n  {green('✅ ' + _t('notify_disabled')) if ok else red('❌ ' + _t('notify_error'))}")
+            pause()
+
+        elif idx == 2:
+            from core.notifier import reset_state
+            reset_state()
+            print(f"\n  {green('✅')} {_t('notify_reset_done')}")
+            pause()
+
+        else:
+            break
+
+
 # ─── Ayarlar alt menüsü ───────────────────────────────────────
 def screen_ayarlar(token):
     while True:
@@ -1663,6 +1993,7 @@ def screen_ayarlar(token):
         opts = [
             _t("opt_settings"),
             _t("opt_auto"),
+            _t("opt_notify_auto"),
             _t("back"),
         ]
         idx = menu(opts)
@@ -1670,6 +2001,8 @@ def screen_ayarlar(token):
             screen_settings()
         elif idx == 1:
             screen_auto(token)
+        elif idx == 2:
+            screen_notify_settings()
         else:
             break
 
@@ -1682,6 +2015,7 @@ def run_main_menu(token, username):
         header(show_quote=True)
         print(f"  {bold('👤')} {green(username)}\n")
         _token_warning(token, username)
+        _cache_age_warning()
         _check_and_prompt_update()
 
         opts = [

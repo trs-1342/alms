@@ -48,6 +48,15 @@ alms.py — ALMS İndirici Ana Giriş Noktası
   alms konular --ders FIZ108      → belirli ders konuları
   alms konular --setup            → Firebase bağlantısını kur
 
+── Çevrimdışı Önbellek ──────────────────────────────────
+  alms cache                      → önbellek durumunu göster
+  alms cache --guncelle           → tüm OBİS verilerini çek ve önbelleğe kaydet
+  alms cache --temizle            → önbelleği temizle
+
+── Bildirim Otomasyonu ─────────────────────────────────
+  alms notify-check               → yeni duyuru/sınav/konu durumunu göster
+  alms notify-check --quiet       → sessiz kontrol (cron için)
+
 ── Güncelleme & Sistem ─────────────────────────────────
   alms update                     → güncelleme yükle
   alms --version                  → sürüm + güncelleme kontrolü
@@ -248,13 +257,24 @@ _CMD_ALIASES: dict[str, str] = {
     "topics":         "konular",
     "update-check":   "update",
     "quit":           "logout",
+    # cache aliases
+    "onbellek":       "cache",
+    "önbellek":       "cache",
+    "cevrimdisi":     "cache",
+    "çevrimdışı":     "cache",
+    "offline":        "cache",
+    # notify aliases
+    "notify":         "notify-check",
+    "bildir":         "notify-check",
+    "bildirim":       "notify-check",
+    "bildirim-kontrol": "notify-check",
 }
 
 _CANONICAL_COMMANDS = frozenset([
     "menu", "setup", "sync", "list", "download", "today", "open",
     "status", "stats", "log", "export", "logout", "config", "obis",
     "update", "transkript", "program", "duyurular", "takvim",
-    "devamsizlik", "notlar", "sinav", "konular",
+    "devamsizlik", "notlar", "sinav", "konular", "cache", "notify-check",
 ])
 
 
@@ -372,6 +392,12 @@ def build_parser() -> _BilingualParser:
     p.add_argument("--simule", "--simulate", "--simulasyon",
                    dest="simule", action="store_true",
                    help="notlar: final not simülasyonu  |  --simule / --simulate")
+    p.add_argument("--guncelle", "--update-cache", "--güncelle",
+                   dest="guncelle", action="store_true",
+                   help="cache: tüm OBİS verilerini çek ve kaydet  |  --guncelle / --update-cache")
+    p.add_argument("--temizle", "--clear-cache",
+                   dest="temizle", action="store_true",
+                   help="cache: önbelleği temizle  |  --temizle / --clear-cache")
     return p
 
 
@@ -517,11 +543,11 @@ def cmd_sync(token: str, args):
         for ff in result["failed_files"]:
             log.error("  ❌ %s — %s", ff["file"], ff["error"])
 
-    # Yaklaşan sınav bildirimi (1 ve 3 gün kala)
+    # Yaklaşan sınav bildirimi (1 ve 3 gün kala) — get_session_silent: cron'da interaktif prompt yok
     if cfg_get("notify_desktop"):
         try:
-            from core.obis import get_session, check_upcoming_exams_notify
-            sess = get_session()
+            from core.obis import get_session_silent, check_upcoming_exams_notify
+            sess = get_session_silent()
             if sess:
                 check_upcoming_exams_notify(sess)
         except Exception:
@@ -586,6 +612,94 @@ def cmd_config():
     cfg = load()
     safe = {k: v for k, v in cfg.items() if "token" not in k.lower()}
     print(json.dumps(safe, ensure_ascii=False, indent=2))
+
+
+def _cmd_cache(args, token: str):
+    """alms cache — offline cache management / çevrimdışı önbellek yönetimi."""
+    from core import cache as _cache
+
+    try:
+        from core.config import get as _cfg
+        lang = _cfg("language") or "tr"
+    except Exception:
+        lang = "tr"
+
+    _S = {
+        "tr": {
+            "cleared":        "Önbellek temizlendi — {n} dosya silindi.",
+            "session_get":    "OBİS oturumu alınıyor...",
+            "session_fail":   "❌ OBİS oturumu kurulamadı.",
+            "fetching":       "Veriler çekiliyor...\n",
+            "saved":          "{ok}/{total} önbelleğe kaydedildi.",
+            "title":          "Çevrimdışı Önbellek Durumu",
+            "col_data":       "Veri",
+            "col_status":     "Durum",
+            "col_updated":    "Güncelleme",
+            "fresh":          "taze",
+            "stale":          "eski",
+            "none":           "yok",
+            "ago":            "önce",
+            "hint_update":    "alms cache --guncelle   → tüm verileri güncelle",
+            "hint_clear":     "alms cache --temizle    → önbelleği temizle",
+        },
+        "en": {
+            "cleared":        "Cache cleared — {n} file(s) deleted.",
+            "session_get":    "Getting OBIS session...",
+            "session_fail":   "❌ Could not establish OBIS session.",
+            "fetching":       "Fetching data...\n",
+            "saved":          "{ok}/{total} saved to cache.",
+            "title":          "Offline Cache Status",
+            "col_data":       "Data",
+            "col_status":     "Status",
+            "col_updated":    "Updated",
+            "fresh":          "fresh",
+            "stale":          "stale",
+            "none":           "none",
+            "ago":            "ago",
+            "hint_update":    "alms cache --guncelle   → fetch and cache all data",
+            "hint_clear":     "alms cache --temizle    → clear the cache",
+        },
+    }
+    s = _S.get(lang, _S["tr"])
+
+    if getattr(args, "temizle", False):
+        removed = _cache.clear()
+        print(f"✅ " + s["cleared"].format(n=removed))
+        return
+
+    if getattr(args, "guncelle", False):
+        from core.obis import get_session
+        print(s["session_get"])
+        session = get_session()
+        if not session:
+            print(s["session_fail"])
+            return
+        print(s["fetching"])
+        results = _cache.fetch_all(session, token)
+        ok = sum(1 for v in results.values() if v)
+        for k, success in results.items():
+            icon = "✅" if success else "❌"
+            print(f"  {icon} {_cache.get_label(k)}")
+        print(f"\n" + s["saved"].format(ok=ok, total=len(results)))
+        return
+
+    # Default: show status
+    st = _cache.status()
+    print(f"\n  {s['title']}\n")
+    print(f"  {s['col_data']:<22} {s['col_status']:<10} {s['col_updated']}")
+    print("  " + "─" * 52)
+    for entry in st:
+        if entry["exists"]:
+            h = entry["age_hours"]
+            freshness = s["fresh"] if not entry["stale"] else s["stale"]
+            ts = (entry["updated_at"] or "")[:16].replace("T", " ")
+            age_str = f"({h:.0f}h {s['ago']})" if h is not None else ""
+            print(f"  {entry['label']:<22} {freshness:<10} {ts}  {age_str}")
+        else:
+            print(f"  {entry['label']:<22} {s['none']:<10}")
+    print()
+    print(f"  {s['hint_update']}")
+    print(f"  {s['hint_clear']}\n")
 
 
 def cmd_obis(args):
@@ -784,6 +898,19 @@ def main():
         elif args.command == "konular":
             from core.topics import topics_main
             topics_main(args, username)
+        elif args.command == "cache":
+            _cmd_cache(args, token)
+        elif args.command == "notify-check":
+            from core.notifier import run_check
+            from core.config import get as _cfg
+            quiet = getattr(args, "quiet", False)
+            result = run_check(token=token, quiet=quiet)
+            if not quiet:
+                total = sum(len(v) for v in result.values())
+                if total == 0:
+                    lang = _cfg("language") or "tr"
+                    msg = "No new items." if lang == "en" else "Yeni öğe yok."
+                    print(f"  ✅ {msg}")
     except KeyboardInterrupt:
         print("\nÇıkılıyor...")
     except Exception as e:

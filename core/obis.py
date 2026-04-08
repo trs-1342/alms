@@ -164,6 +164,27 @@ def get_session() -> requests.Session | None:
     print("❌ Token geçersiz.")
     return None
 
+
+def get_session_silent() -> "requests.Session | None":
+    """
+    OBİS oturumu al — interaktif prompt YOK.
+    Otomasyon (cron, notify-check) için kullanılır.
+    Oturum geçersizse None döner, kullanıcıya sormaz.
+    """
+    cookie = load_session()
+    if not cookie:
+        return None
+    s = requests.Session()
+    s.headers.update(HEADERS)
+    s.cookies.set("ASP.NET_SessionId", cookie, domain="obis.gelisim.edu.tr")
+    try:
+        r = s.get(f"{OBIS_BASE}/Default.aspx", allow_redirects=True, timeout=10)
+        if "login" not in r.url.lower():
+            return s
+    except requests.RequestException:
+        pass
+    return None
+
 # ── Sınav tarihleri ───────────────────────────────────────────────────────────
 
 def get_sinav_tarihleri(session: requests.Session) -> list[dict]:
@@ -544,6 +565,8 @@ def print_ders_programi(dersler: list[dict]):
         return
 
     gun_sirasi = ["PAZARTESİ","SALI","ÇARŞAMBA","PERŞEMBE","CUMA","CUMARTESİ","PAZAR"]
+    _WEEKDAY_TO_GUN = ["PAZARTESİ","SALI","ÇARŞAMBA","PERŞEMBE","CUMA","CUMARTESİ","PAZAR"]
+    today_gun = _WEEKDAY_TO_GUN[date.today().weekday()]
 
     # Aynı gündeki aynı dersi (ders_kodu) grupla → saat aralığı hesapla
     by_gun_kod: dict[tuple, list] = defaultdict(list)
@@ -563,7 +586,11 @@ def print_ders_programi(dersler: list[dict]):
 
         gun_gruplari.sort(key=lambda x: min(s["saat"] for s in x[1]))
 
-        print(f"  {_BOLD}{_C.CYAN}── {gun} ──{_RESET}")
+        is_today = (gun == today_gun)
+        if is_today:
+            print(f"  {_BOLD}{_C.GREEN}── {gun}  ← BUGÜN ──{_RESET}")
+        else:
+            print(f"  {_BOLD}{_C.CYAN}── {gun} ──{_RESET}")
         print()
 
         for kod, slots in gun_gruplari:
@@ -588,10 +615,11 @@ def print_ders_programi(dersler: list[dict]):
 
             # Satır 1: KOD  Ders Adı (kırpılmış)     09:00–14:50  5 saat
             ad_goster = _trunc(ders_adi, 30)
+            row_color = _C.GREEN if is_today else _C.YELLOW
             print(
-                f"  {_BOLD}{_C.YELLOW}{kod:<8}{_RESET}"
+                f"  {_BOLD}{row_color}{kod:<8}{_RESET}"
                 f"  {_BOLD}{ad_goster:<32}{_RESET}"
-                f"  {_C.CYAN}{sure_str}{_RESET}"
+                f"  {(_C.GREEN if is_today else _C.CYAN)}{sure_str}{_RESET}"
                 f"  {_DIM}{saat_label}{_RESET}"
             )
 

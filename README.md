@@ -5,14 +5,14 @@
 # ALMS İndirici
 
 IGU (İstanbul Gelişim Üniversitesi) ALMS ve OBİS sistemlerine tek komutla erişim.
-Ders materyallerini otomatik indirir, sınav tarihlerini gösterir.
+Ders materyallerini otomatik indirir, sınav tarihlerini gösterir, çevrimdışı kullanımı destekler.
 
 <!-- ═══════════════════════════════════════════════════════════════
      FOTOĞRAF 1 — Ana menü ekran görüntüsü
      Çekilecek yer : terminalde sadece  alms  komutunu çalıştırın
-     Dosya         : assets/foto-1.png
+     Dosya         : assets/foto-1-tr.png
      ═══════════════════════════════════════════════════════════════ -->
-![Ana Menü](assets/foto-1.png)
+![Ana Menü](assets/foto-1-tr.png)
 
 ---
 
@@ -201,12 +201,15 @@ alms.bat setup
 ## Temel Kullanım
 
 ```bash
-alms                # Menü
-alms sync           # Yeni dosyaları indir
-alms download       # Dosya seçerek indir
-alms obis --sinav   # Sınav takvimi
-alms update         # Güncelleme yükle
-alms --version      # Sürüm + güncelleme kontrolü
+alms                        # Menü
+alms sync                   # Yeni dosyaları indir
+alms download               # Dosya seçerek indir
+alms obis --sinav           # Sınav takvimi
+alms konular                # Sınav konuları (topluluk)
+alms cache --guncelle       # OBİS verilerini çevrimdışı için kaydet
+alms notify-check           # Yeni duyuru/sınav/konu kontrolü
+alms update                 # Güncelleme yükle
+alms --version              # Sürüm + güncelleme kontrolü
 ```
 
 Tam kullanım rehberi: **[KULLANIM.md](https://github.com/trs-1342/alms/blob/main/KULLANIM.md)**
@@ -229,7 +232,7 @@ Tam kullanım rehberi: **[KULLANIM.md](https://github.com/trs-1342/alms/blob/mai
 | `alms status` | Sistem durumu |
 | `alms stats` | İstatistikler |
 | `alms log` | Aktivite logu |
-| `alms export` | Ders indexini dışa aktar |
+| `alms export` | Ders indexini + OBİS verilerini dışa aktar |
 | `alms open` | İndirme klasörünü aç |
 | `alms obis --setup` | OBİS oturumu kur |
 | `alms obis sinav` | Sınav takvimi |
@@ -239,6 +242,14 @@ Tam kullanım rehberi: **[KULLANIM.md](https://github.com/trs-1342/alms/blob/mai
 | `alms obis devamsizlik` | Devamsızlık durumu |
 | `alms obis duyurular` | OBİS duyuruları (tam içerik) |
 | `alms takvim` | ALMS zaman çizelgesi |
+| `alms konular` | Sınav konuları listele |
+| `alms konular --ekle` | Yeni sınav konusu ekle |
+| `alms konular --oyla <id>` | Konuya oy ver |
+| `alms cache` | Çevrimdışı önbellek durumu |
+| `alms cache --guncelle` | Tüm OBİS verilerini önbelleğe kaydet |
+| `alms cache --temizle` | Önbelleği temizle |
+| `alms notify-check` | Yeni duyuru/sınav/konu kontrolü |
+| `alms notify-check --quiet` | Sessiz kontrol (otomasyon için) |
 | `alms update` | Güncelleme yükle |
 | `alms --version` | Sürüm bilgisi |
 | `alms logout` | Kimlik bilgilerini sil |
@@ -258,9 +269,80 @@ Oturum kapatılmadığı sürece token geçerli kalır.
 
 ---
 
+## Çevrimdışı (Offline) Mod
+
+İnternet bağlantısı olmayan ortamlarda (sınav günü, kampüs dışı vb.) OBİS verilerine erişmek için:
+
+```bash
+# Bağlantı varken verileri kaydet
+alms cache --guncelle
+
+# Bağlantı olmadığında görüntüle
+alms obis sinav          # önbellekten gösterir
+alms obis devamsizlik    # önbellekten gösterir
+alms obis program        # önbellekten gösterir
+alms obis notlar         # önbellekten gösterir
+alms obis transkript     # önbellekten gösterir
+```
+
+Önbelleklenen veriler:
+- Sınav tarihleri
+- Ders notları (ödev/vize/final/harf)
+- Transkript & not ortalaması
+- Ders programı (haftalık)
+- Devamsızlık durumu
+- Duyurular
+
+> Önbellek `~/.config/alms/cache/` dizininde JSON olarak saklanır.
+> Her komut çalıştırıldığında — bağlantı varsa — önbellek otomatik güncellenir.
+
+---
+
+## Sınav Konuları (Topluluk)
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOTOĞRAF 4 — Sınav konuları listesi
+     Çekilecek yer : alms konular  (birkaç konu girilmişken)
+     Dosya         : assets/foto-4-tr.png
+     ═══════════════════════════════════════════════════════════════ -->
+![Sınav Konuları](assets/foto-4-tr.png)
+
+Firebase üzerinde öğrencilerin paylaştığı sınav konuları. Kurulum gerekmez — `alms setup` ile OBİS girişi yapılmışsa Firebase otomatik bağlanır.
+
+```bash
+alms konular                    # Tüm konuları listele
+alms konular --ekle             # Yeni konu gir
+alms konular --vize             # Sadece vize konuları
+alms konular --final            # Sadece final konuları
+alms konular --ders FIZ108      # Belirli ders konuları
+alms konular --oyla <id>        # Konuya doğru/yanlış oyu ver
+```
+
+- Her öğrenci 30 dakikada bir konu ekleyebilir (spam koruması)
+- Öğrenci numarası hiçbir zaman açık saklanmaz (SHA-256 hash)
+- Oylar değiştirilemez; trust score ile güvenilirlik gösterilir
+
+---
+
+## Bildirim Otomasyonu
+
+Yeni duyuru, sınav veya sınav konusu eklendiğinde masaüstü bildirimi gönderir.
+Ders indirme otomasyonundan **bağımsız** ayrı bir zamanlayıcıdır.
+
+```bash
+alms notify-check           # Manuel kontrol (yeni öğe varsa gösterir)
+alms notify-check --quiet   # Sessiz kontrol — sadece bildirim gönderir
+```
+
+Menüden **Ayarlar → Bildirim Otomasyonu** ile otomatik zamanlama kurulur:
+- Kontrol sıklığı seçilir (örn: her 1 saat)
+- Linux: crontab, macOS: launchd, Windows: Task Scheduler
+
+---
+
 ## Otomatik İndirme
 
-Menüden **[16] Otomatik Çalıştırma** ile ayarlanır.
+Menüden **Ayarlar → Otomatik Çalıştırma** ile ayarlanır.
 
 | Platform | Yöntem | Log |
 |----------|--------|-----|
@@ -276,6 +358,7 @@ Menüden **[16] Otomatik Çalıştırma** ile ayarlanır.
 - OBİS token şifreli saklanır
 - SSL doğrulama her zaman açık
 - Token/şifre log dosyasına yazılmaz
+- Firebase: öğrenci numarası SHA-256 hash ile saklanır, gerçek numara görünmez
 
 ---
 
