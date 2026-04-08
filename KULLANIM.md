@@ -104,6 +104,9 @@ alms sync --course FIZ108 -f pdf --week 3
 ---
 
 ### `alms download` — Dosya Seçici
+
+![alms](assets/alms_download.png)
+
 ```
 alms download
 ```
@@ -134,6 +137,9 @@ alms download
 ---
 
 ### `alms list` — Ders Listesi
+
+![alms](assets/alms_list.png)
+
 ```
 alms list
 ```
@@ -150,6 +156,9 @@ Bugünkü ve yaklaşan aktiviteleri (ödev, sınav) gösterir.
 ---
 
 ### `alms status` — Sistem Durumu
+
+![alms](assets/alms_status.png)
+
 ```
 alms status
 ```
@@ -173,6 +182,9 @@ alms open
 ---
 
 ### `alms stats` — İstatistikler
+
+![alms](assets/alms_stats.png)
+
 ```
 alms stats
 ```
@@ -181,6 +193,9 @@ Derse göre indirilen dosya sayısı ve boyutunu gösterir.
 ---
 
 ### `alms log` — Aktivite Logu
+
+![alms](assets/alms_log.png)
+
 ```
 alms log
 ```
@@ -189,6 +204,9 @@ Son 30 sync/indirme işleminin kaydını gösterir.
 ---
 
 ### `alms export` — Dışa Aktar
+
+![alms](assets/alms_export.png)
+
 ```
 alms export
 ```
@@ -417,6 +435,9 @@ alms notify-check --quiet   # Sessiz kontrol — sadece bildirim gönderir (cron
 ---
 
 ### `alms update` — Güncelleme
+
+![Bildirim Otomasyonu](assets/foto-7-tr.png)
+
 ```
 alms update
 ```
@@ -431,6 +452,9 @@ Güvenli güncelleme yapar:
 ---
 
 ### `alms --version` — Sürüm Bilgisi
+
+![alms](assets/alms_version.png)
+
 ```
 alms --version
 ```
