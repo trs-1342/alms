@@ -48,3 +48,4 @@ test/
 !KULLANIM.en.md
 
 .directory
+*.kate-swp

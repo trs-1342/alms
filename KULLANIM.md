@@ -148,6 +148,9 @@ Aktif dersleri ve ilerleme yüzdelerini gösterir.
 ---
 
 ### `alms today` — Günlük Program
+
+![alms](assets/alms_today.png)
+
 ```
 alms today
 ```
@@ -474,6 +477,9 @@ Güncelleme varsa:
 ---
 
 ### `alms logout` — Çıkış
+
+![alms](assets/alms_logout.png)
+
 ```
 alms logout
 ```
@@ -483,6 +489,9 @@ ALMS şifresi değiştirildiğinde kullanılır, ardından `alms setup` çalış
 ---
 
 ### `alms config` — Ayar Görüntüle
+
+![alms](assets/alms_config.png)
+
 ```
 alms config
 ```
