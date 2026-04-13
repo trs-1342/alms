@@ -62,6 +62,7 @@ def _write_wrapper(courses: list[str] | None = None) -> Path:
 
 export HOME="{home}"
 export PATH="/usr/local/bin:/usr/bin:/bin"
+export TERM=dumb
 
 # Masaüstü bildirimi için DBUS/DISPLAY bul
 find_display() {{
@@ -106,6 +107,9 @@ exec 9>"$LOCK"
 flock -n 9 || {{ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [SKIP] Zaten çalışıyor" >> "$LOG"; exit 0; }}
 echo $$ >&9
 trap "rm -f '$LOCK'" EXIT
+
+# Config yoksa setup wizard tetiklenir ve EOFError verir — erken çık
+[ -f "$HOME/.config/alms/config.json" ] || {{ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [SKIP] Config yok, kurulum gerekli (alms setup)" >> "$LOG"; exit 1; }}
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [START] ALMS sync başlıyor{course_args}" >> "$LOG"
 
@@ -387,6 +391,7 @@ def _write_notify_wrapper() -> Path:
 
 export HOME="{home}"
 export PATH="/usr/local/bin:/usr/bin:/bin"
+export TERM=dumb
 
 # Masaüstü bildirimi için DBUS/DISPLAY bul
 find_display() {{
@@ -416,6 +421,9 @@ exec 9>"$LOCK"
 flock -n 9 || exit 0
 echo $$ >&9
 trap "rm -f '$LOCK'" EXIT
+
+# Config yoksa çık — interaktif giriş gerektiren wizard cron'da çalışamaz
+[ -f "$HOME/.config/alms/config.json" ] || {{ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [SKIP] Config yok" >> "$LOG"; exit 1; }}
 
 disp=$(find_display)
 dbus=$(find_dbus)

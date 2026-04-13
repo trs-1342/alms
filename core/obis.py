@@ -5,17 +5,21 @@ Sınav tarihleri, notlar, devamsızlık, transkript,
 ders programı, duyurular, zaman çizelgesi
 """
 import re
+
 import requests
 from bs4 import BeautifulSoup
 from datetime import date, datetime
 from collections import defaultdict
 from utils.paths import CONFIG_DIR, ensure_secure_dir
 
+
+
 SESSION_FILE     = CONFIG_DIR / "obis_session"
 LMS_SESSION_FILE = CONFIG_DIR / "lms_session"
 
 OBIS_BASE = "https://obis.gelisim.edu.tr"
 LMS_BASE  = "https://lms.gelisim.edu.tr"
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:148.0) Gecko/20100101 Firefox/148.0",
@@ -110,6 +114,7 @@ def setup_obis(force: bool = False):
             print("✅ OBİS oturumu zaten geçerli.")
             print("   Zorla yenilemek için: alms obis --setup --force")
             return
+
     print("\n── OBİS Oturum Kurulumu ─────────────────────────────")
     print("1. Tarayıcıda https://obis.gelisim.edu.tr adresine giriş yap")
     print("2. F12 → Storage → Cookies → obis.gelisim.edu.tr")
@@ -169,7 +174,7 @@ def get_session_silent() -> "requests.Session | None":
     """
     OBİS oturumu al — interaktif prompt YOK.
     Otomasyon (cron, notify-check) için kullanılır.
-    Oturum geçersizse None döner, kullanıcıya sormaz.
+    Kayıtlı oturum geçerliyse döner, değilse None.
     """
     cookie = load_session()
     if not cookie:
